@@ -7,14 +7,86 @@ if (started) {
   app.quit();
 }
 
+// Store discovered Bluetooth devices
+let bluetoothDevices: Map<string, Electron.BluetoothDevice> = new Map();
+let selectBluetoothCallback: ((deviceId: string) => void) | null = null;
+let scanTimeout: NodeJS.Timeout | null = null;
+const SCAN_DURATION_MS = 3000;
+
 const createWindow = () => {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 900,
+    height: 700,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
+  });
+
+  // Handle Bluetooth device selection
+  mainWindow.webContents.on('select-bluetooth-device', (event, devices, callback) => {
+    event.preventDefault();
+
+    // Store the callback for later use when user selects a device
+    selectBluetoothCallback = callback;
+
+    // Accumulate devices (use Map to deduplicate by deviceId)
+    devices.forEach((device) => {
+      if (!bluetoothDevices.has(device.deviceId)) {
+        console.log(`[Main] New device: ${device.deviceName || 'Unknown'} (${device.deviceId})`);
+        bluetoothDevices.set(device.deviceId, device);
+      }
+    });
+
+    // Start the scan timeout if not already started
+    if (!scanTimeout) {
+      console.log(`[Main] Starting ${SCAN_DURATION_MS}ms scan timer...`);
+      scanTimeout = setTimeout(() => {
+        console.log(`[Main] Scan complete. Found ${bluetoothDevices.size} devices.`);
+
+        // Convert Map to array and send to renderer
+        const deviceList = Array.from(bluetoothDevices.values());
+        mainWindow.webContents.send('bluetooth-scan-complete', deviceList);
+
+        // Reset for next scan (but keep callback for selection)
+        scanTimeout = null;
+      }, SCAN_DURATION_MS);
+    }
+  });
+
+  // Handle device selection from renderer
+  const { ipcMain } = require('electron');
+
+  ipcMain.on('select-bluetooth-device', (_event, deviceId: string) => {
+    console.log(`[Main] User selected device: ${deviceId}`);
+    if (selectBluetoothCallback) {
+      selectBluetoothCallback(deviceId);
+      selectBluetoothCallback = null;
+      bluetoothDevices.clear(); // Clear for next scan
+    }
+  });
+
+  ipcMain.on('cancel-bluetooth-request', () => {
+    console.log('[Main] Bluetooth request cancelled');
+    if (selectBluetoothCallback) {
+      selectBluetoothCallback('');
+      selectBluetoothCallback = null;
+    }
+    if (scanTimeout) {
+      clearTimeout(scanTimeout);
+      scanTimeout = null;
+    }
+    bluetoothDevices.clear();
+  });
+
+  // Reset device list when starting a new scan
+  ipcMain.on('start-bluetooth-scan', () => {
+    console.log('[Main] New scan requested, clearing previous devices');
+    bluetoothDevices.clear();
+    if (scanTimeout) {
+      clearTimeout(scanTimeout);
+      scanTimeout = null;
+    }
   });
 
   // and load the index.html of the app.

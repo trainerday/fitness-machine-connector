@@ -2,12 +2,81 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>Hello World!</title>
-
+    <title>Trainerday Device Translator</title>
   </head>
   <body>
-    <h1>💖 Hello World!</h1>
-    <p>Welcome to your Electron application.</p>
+    <div class="container">
+      <header>
+        <h1>Trainerday Device Translator</h1>
+        <p class="subtitle">Connect fitness devices and broadcast as FTMS</p>
+      </header>
+
+      <section class="connection-section">
+        <div class="status-bar">
+          <div class="status-item">
+            <span class="status-label">Device:</span>
+            <span id="device-status" class="status-value disconnected">Not Connected</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">FTMS Broadcast:</span>
+            <span id="ftms-status" class="status-value disconnected">Inactive</span>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button id="scan-btn" class="btn btn-primary">Scan for Devices</button>
+          <button id="disconnect-btn" class="btn btn-secondary" disabled>Disconnect</button>
+        </div>
+      </section>
+
+      <section class="device-list-section" id="device-list-section" style="display: none;">
+        <h2>Found Devices</h2>
+        <div id="device-list" class="device-list">
+          <!-- Devices will be populated here -->
+        </div>
+      </section>
+
+      <section class="data-section">
+        <h2>Live Data</h2>
+        <div class="data-grid">
+          <div class="data-card">
+            <div class="data-label">Power</div>
+            <div class="data-value">
+              <span id="power-value">--</span>
+              <span class="data-unit">W</span>
+            </div>
+          </div>
+          <div class="data-card">
+            <div class="data-label">Cadence</div>
+            <div class="data-value">
+              <span id="cadence-value">--</span>
+              <span class="data-unit">RPM</span>
+            </div>
+          </div>
+          <div class="data-card">
+            <div class="data-label">Heart Rate</div>
+            <div class="data-value">
+              <span id="hr-value">--</span>
+              <span class="data-unit">BPM</span>
+            </div>
+          </div>
+          <div class="data-card">
+            <div class="data-label">Speed</div>
+            <div class="data-value">
+              <span id="speed-value">--</span>
+              <span class="data-unit">km/h</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="log-section">
+        <h2>Activity Log</h2>
+        <div id="log" class="log-container">
+          <div class="log-entry">Application started. Click "Scan for Devices" to begin.</div>
+        </div>
+      </section>
+    </div>
     <script type="module" src="/src/renderer.ts"></script>
   </body>
 </html>
