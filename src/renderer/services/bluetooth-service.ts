@@ -1,79 +1,127 @@
 /**
- * Bluetooth service for connecting to fitness devices
- * Uses Web Bluetooth API (runs in renderer process)
+ * =============================================================================
+ * BLUETOOTH SERVICE
+ * =============================================================================
+ *
+ * Purpose:
+ *   Pure Bluetooth communication layer. Handles ONLY Bluetooth operations.
+ *   This service knows nothing about fitness data, parsing, or the UI.
+ *
+ * Responsibilities:
+ *   - Check if Web Bluetooth is available
+ *   - Scan for Bluetooth devices
+ *   - Connect to a device's GATT server
+ *   - Subscribe to characteristics and emit raw data
+ *   - Handle disconnection
+ *
+ * What this service does NOT do:
+ *   - Parse or interpret data (that's the Parser's job)
+ *   - Know about fitness metrics like power, cadence, etc.
+ *   - Interact with the UI
+ *
+ * Usage:
+ *   This service is used by FitnessDataReader, not directly by the UI.
+ *
+ * =============================================================================
  */
 
-import { FitnessData, ConnectedDeviceInfo } from '../../shared/types';
-import {
-  FITNESS_SERVICE_UUIDS,
-  FTMS_CHARACTERISTICS,
-  STANDARD_CHARACTERISTICS,
-} from '../../shared/constants';
-import {
-  parseIndoorBikeData,
-  parseCyclingPowerData,
-  parseHeartRateData,
-} from './data-parsers';
+/**
+ * Identifies which type of Bluetooth characteristic sent the data.
+ * This allows the parser to know how to interpret the raw bytes.
+ */
+export type CharacteristicType = 'ftms-indoor-bike' | 'cycling-power' | 'heart-rate';
 
-type DataCallback = (data: FitnessData) => void;
-type ConnectionCallback = (connected: boolean, device?: ConnectedDeviceInfo) => void;
+/**
+ * Raw data packet from a Bluetooth characteristic.
+ * Contains the characteristic type and raw bytes - no interpretation.
+ */
+export interface RawBluetoothData {
+  characteristicType: CharacteristicType;
+  rawValue: DataView;
+}
+
+/**
+ * Basic device info for connection status callbacks.
+ */
+export interface DeviceInfo {
+  name: string;
+  id: string;
+}
+
+/** Callback type for raw data events */
+type RawDataCallback = (data: RawBluetoothData) => void;
+
+/** Callback type for connection status events */
+type ConnectionCallback = (connected: boolean, device?: DeviceInfo) => void;
+
+/**
+ * Standard Bluetooth GATT Service UUIDs.
+ * These are defined by the Bluetooth SIG specification.
+ */
+const SERVICE_UUIDS = {
+  FTMS: 0x1826,              // Fitness Machine Service
+  CYCLING_POWER: 0x1818,     // Cycling Power Service
+  HEART_RATE: 0x180d,        // Heart Rate Service
+} as const;
+
+/**
+ * Standard Bluetooth GATT Characteristic UUIDs.
+ * These identify specific data points within a service.
+ */
+const CHARACTERISTIC_UUIDS = {
+  FTMS_INDOOR_BIKE_DATA: 0x2ad2,
+  CYCLING_POWER_MEASUREMENT: 0x2a63,
+  HEART_RATE_MEASUREMENT: 0x2a37,
+} as const;
 
 class BluetoothService {
   private connectedDevice: BluetoothDevice | null = null;
-  private server: BluetoothRemoteGATTServer | null = null;
-  private dataCallback: DataCallback | null = null;
+  private gattServer: BluetoothRemoteGATTServer | null = null;
+  private rawDataCallback: RawDataCallback | null = null;
   private connectionCallback: ConnectionCallback | null = null;
 
   /**
-   * Check if Web Bluetooth is available
+   * Check if Web Bluetooth API is available in this environment.
    */
   isAvailable(): boolean {
     return navigator.bluetooth !== undefined;
   }
 
   /**
-   * Set callback for fitness data updates
+   * Register a callback to receive raw Bluetooth data.
+   * The callback receives unprocessed bytes with a characteristic type identifier.
    */
-  onData(callback: DataCallback): void {
-    this.dataCallback = callback;
+  onRawData(callback: RawDataCallback): void {
+    this.rawDataCallback = callback;
   }
 
   /**
-   * Set callback for connection status changes
+   * Register a callback for connection status changes.
    */
   onConnectionChange(callback: ConnectionCallback): void {
     this.connectionCallback = callback;
   }
 
   /**
-   * Scan for fitness devices
+   * Scan for available Bluetooth devices.
+   * Returns the selected device or null if cancelled.
    */
   async scanForDevices(): Promise<BluetoothDevice | null> {
-    console.log('[BluetoothService] scanForDevices called');
-
     if (!this.isAvailable()) {
-      console.log('[BluetoothService] Web Bluetooth NOT available');
       throw new Error('Web Bluetooth is not available');
     }
 
-    console.log('[BluetoothService] Web Bluetooth is available, starting requestDevice...');
-
     try {
-      console.log('[BluetoothService] Calling navigator.bluetooth.requestDevice()');
       const device = await navigator.bluetooth.requestDevice({
         acceptAllDevices: true,
         optionalServices: [
-          FITNESS_SERVICE_UUIDS.FTMS,
-          FITNESS_SERVICE_UUIDS.CYCLING_POWER,
-          FITNESS_SERVICE_UUIDS.CYCLING_SPEED_CADENCE,
-          FITNESS_SERVICE_UUIDS.HEART_RATE,
+          SERVICE_UUIDS.FTMS,
+          SERVICE_UUIDS.CYCLING_POWER,
+          SERVICE_UUIDS.HEART_RATE,
         ],
       });
-
-      console.log('[BluetoothService] requestDevice returned:', device?.name, device?.id);
       return device;
     } catch (error) {
-      console.log('[BluetoothService] requestDevice error:', (error as Error).message);
       if ((error as Error).message?.includes('cancelled')) {
         return null;
       }
@@ -82,182 +130,135 @@ class BluetoothService {
   }
 
   /**
-   * Connect to a device and start reading data
+   * Connect to a Bluetooth device and start listening for data.
    */
   async connect(device: BluetoothDevice): Promise<void> {
     if (!device.gatt) {
       throw new Error('Device does not support GATT');
     }
 
-    // Disconnect from any existing device
     await this.disconnect();
 
-    try {
-      // Connect to GATT server
-      this.server = await device.gatt.connect();
-      this.connectedDevice = device;
+    this.gattServer = await device.gatt.connect();
+    this.connectedDevice = device;
 
-      // Set up disconnect handler
-      device.addEventListener('gattserverdisconnected', () => {
-        this.handleDisconnect();
-      });
+    device.addEventListener('gattserverdisconnected', () => {
+      this.handleDisconnect();
+    });
 
-      // Notify connection
-      if (this.connectionCallback) {
-        this.connectionCallback(true, {
-          device,
-          name: device.name || 'Unknown Device',
-          id: device.id,
-          services: [],
-          isFitnessDevice: true,
-        });
-      }
+    this.notifyConnectionChange(true, {
+      name: device.name || 'Unknown Device',
+      id: device.id,
+    });
 
-      // Try to subscribe to fitness data
-      await this.subscribeToFitnessData();
+    await this.subscribeToCharacteristics();
+  }
 
-    } catch (error) {
-      this.connectedDevice = null;
-      this.server = null;
-      throw error;
+  /**
+   * Disconnect from the current device.
+   */
+  async disconnect(): Promise<void> {
+    if (this.gattServer?.connected) {
+      this.gattServer.disconnect();
     }
+    this.connectedDevice = null;
+    this.gattServer = null;
   }
 
   /**
-   * Subscribe to fitness data characteristics
+   * Check if currently connected to a device.
    */
-  private async subscribeToFitnessData(): Promise<void> {
-    if (!this.server) return;
-
-    // Try FTMS Indoor Bike Data first
-    const ftmsSubscribed = await this.trySubscribeToFTMS();
-    if (ftmsSubscribed) return;
-
-    // Try Cycling Power Service as fallback
-    await this.trySubscribeToCyclingPower();
-
-    // Also try Heart Rate Service
-    await this.trySubscribeToHeartRate();
+  isConnected(): boolean {
+    return this.gattServer?.connected ?? false;
   }
 
   /**
-   * Try to subscribe to FTMS Indoor Bike Data
+   * Subscribe to available fitness-related characteristics.
+   * Tries FTMS first, then falls back to individual services.
    */
-  private async trySubscribeToFTMS(): Promise<boolean> {
-    if (!this.server) return false;
+  private async subscribeToCharacteristics(): Promise<void> {
+    if (!this.gattServer) return;
+
+    // Try FTMS first (most complete data)
+    const ftmsSuccess = await this.trySubscribe(
+      SERVICE_UUIDS.FTMS,
+      CHARACTERISTIC_UUIDS.FTMS_INDOOR_BIKE_DATA,
+      'ftms-indoor-bike'
+    );
+
+    // If FTMS not available, try Cycling Power
+    if (!ftmsSuccess) {
+      await this.trySubscribe(
+        SERVICE_UUIDS.CYCLING_POWER,
+        CHARACTERISTIC_UUIDS.CYCLING_POWER_MEASUREMENT,
+        'cycling-power'
+      );
+    }
+
+    // Always try Heart Rate (can be additional to other services)
+    await this.trySubscribe(
+      SERVICE_UUIDS.HEART_RATE,
+      CHARACTERISTIC_UUIDS.HEART_RATE_MEASUREMENT,
+      'heart-rate'
+    );
+  }
+
+  /**
+   * Attempt to subscribe to a specific characteristic.
+   * Returns true if successful, false otherwise.
+   */
+  private async trySubscribe(
+    serviceUuid: number,
+    characteristicUuid: number,
+    characteristicType: CharacteristicType
+  ): Promise<boolean> {
+    if (!this.gattServer) return false;
 
     try {
-      const ftmsService = await this.server.getPrimaryService(FITNESS_SERVICE_UUIDS.FTMS);
-      const indoorBikeChar = await ftmsService.getCharacteristic(FTMS_CHARACTERISTICS.INDOOR_BIKE_DATA);
+      const service = await this.gattServer.getPrimaryService(serviceUuid);
+      const characteristic = await service.getCharacteristic(characteristicUuid);
 
-      indoorBikeChar.addEventListener('characteristicvaluechanged', (event) => {
+      characteristic.addEventListener('characteristicvaluechanged', (event) => {
         const value = (event.target as BluetoothRemoteGATTCharacteristic).value;
-        if (value && this.dataCallback) {
-          const data = parseIndoorBikeData(value);
-          this.dataCallback(data);
+        if (value) {
+          this.emitRawData(characteristicType, value);
         }
       });
 
-      await indoorBikeChar.startNotifications();
-      console.log('[BluetoothService] Subscribed to FTMS Indoor Bike Data');
+      await characteristic.startNotifications();
       return true;
-    } catch (e) {
-      console.log('[BluetoothService] FTMS not available, trying other services...');
+    } catch {
       return false;
     }
   }
 
   /**
-   * Try to subscribe to Cycling Power Service
+   * Emit raw data to registered callback.
    */
-  private async trySubscribeToCyclingPower(): Promise<boolean> {
-    if (!this.server) return false;
-
-    try {
-      const powerService = await this.server.getPrimaryService(FITNESS_SERVICE_UUIDS.CYCLING_POWER);
-      const powerChar = await powerService.getCharacteristic(STANDARD_CHARACTERISTICS.CYCLING_POWER_MEASUREMENT);
-
-      powerChar.addEventListener('characteristicvaluechanged', (event) => {
-        const value = (event.target as BluetoothRemoteGATTCharacteristic).value;
-        if (value && this.dataCallback) {
-          const data = parseCyclingPowerData(value);
-          this.dataCallback(data);
-        }
-      });
-
-      await powerChar.startNotifications();
-      console.log('[BluetoothService] Subscribed to Cycling Power');
-      return true;
-    } catch (e) {
-      console.log('[BluetoothService] Cycling Power not available');
-      return false;
+  private emitRawData(characteristicType: CharacteristicType, rawValue: DataView): void {
+    if (this.rawDataCallback) {
+      this.rawDataCallback({ characteristicType, rawValue });
     }
   }
 
   /**
-   * Try to subscribe to Heart Rate Service
-   */
-  private async trySubscribeToHeartRate(): Promise<boolean> {
-    if (!this.server) return false;
-
-    try {
-      const hrService = await this.server.getPrimaryService(FITNESS_SERVICE_UUIDS.HEART_RATE);
-      const hrChar = await hrService.getCharacteristic(STANDARD_CHARACTERISTICS.HEART_RATE_MEASUREMENT);
-
-      hrChar.addEventListener('characteristicvaluechanged', (event) => {
-        const value = (event.target as BluetoothRemoteGATTCharacteristic).value;
-        if (value && this.dataCallback) {
-          const heartRate = parseHeartRateData(value);
-          this.dataCallback({ heartRate });
-        }
-      });
-
-      await hrChar.startNotifications();
-      console.log('[BluetoothService] Subscribed to Heart Rate');
-      return true;
-    } catch (e) {
-      console.log('[BluetoothService] Heart Rate not available');
-      return false;
-    }
-  }
-
-  /**
-   * Handle device disconnection
+   * Handle device disconnection event.
    */
   private handleDisconnect(): void {
     this.connectedDevice = null;
-    this.server = null;
+    this.gattServer = null;
+    this.notifyConnectionChange(false);
+  }
 
+  /**
+   * Notify connection status change.
+   */
+  private notifyConnectionChange(connected: boolean, device?: DeviceInfo): void {
     if (this.connectionCallback) {
-      this.connectionCallback(false);
+      this.connectionCallback(connected, device);
     }
-  }
-
-  /**
-   * Disconnect from current device
-   */
-  async disconnect(): Promise<void> {
-    if (this.server && this.server.connected) {
-      this.server.disconnect();
-    }
-    this.connectedDevice = null;
-    this.server = null;
-  }
-
-  /**
-   * Get current connection status
-   */
-  isConnected(): boolean {
-    return this.server?.connected ?? false;
-  }
-
-  /**
-   * Get connected device info
-   */
-  getConnectedDevice(): BluetoothDevice | null {
-    return this.connectedDevice;
   }
 }
 
-// Export singleton instance
+/** Singleton instance */
 export const bluetoothService = new BluetoothService();

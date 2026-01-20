@@ -1,30 +1,66 @@
 /**
- * Renderer process entry point
- * Coordinates UI components with Bluetooth service
+ * =============================================================================
+ * RENDERER ENTRY POINT
+ * =============================================================================
+ *
+ * Purpose:
+ *   Main entry point for the renderer process.
+ *   Coordinates UI components and handles user interactions.
+ *
+ * Architecture:
+ *   This file only interacts with:
+ *   - UI components (ActivityLog, DataDisplay, StatusIndicator, DeviceList)
+ *   - FitnessDataReader (the single service interface for all fitness data)
+ *   - Electron IPC (for device selection flow)
+ *
+ *   It does NOT know about:
+ *   - Bluetooth protocols or raw data
+ *   - Data parsing or byte formats
+ *   - Low-level device communication
+ *
+ * =============================================================================
  */
 
 import '../styles/index.css';
 import { ActivityLog, DataDisplay, StatusIndicator, DeviceList } from './ui';
-import { bluetoothService } from './services';
-import { FitnessData, BluetoothDeviceInfo } from '../shared/types';
+import { FitnessDataReader } from './services';
+import { BluetoothDeviceInfo } from '../shared/types';
 
-// Store the pending device from Web Bluetooth for connection
+// =============================================================================
+// STATE
+// =============================================================================
+
+/** Device returned from Web Bluetooth requestDevice() */
 let pendingBluetoothDevice: BluetoothDevice | null = null;
 
-// Track if we're waiting for scan results (prevents showing list after selection)
+/** Tracks if we're waiting for scan results (prevents showing list after selection) */
 let awaitingScanResults = false;
 
-// UI Components
+// =============================================================================
+// UI COMPONENTS
+// =============================================================================
+
 let activityLog: ActivityLog;
 let dataDisplay: DataDisplay;
 let statusIndicator: StatusIndicator;
 let deviceList: DeviceList;
 
+// =============================================================================
+// SERVICES
+// =============================================================================
+
+/** Single interface for all fitness data operations */
+const fitnessReader = new FitnessDataReader();
+
+// =============================================================================
+// BLUETOOTH AVAILABILITY
+// =============================================================================
+
 /**
- * Check if Web Bluetooth is available
+ * Check if Bluetooth is available and update UI accordingly.
  */
 function checkBluetoothAvailability(): boolean {
-  if (!bluetoothService.isAvailable()) {
+  if (!fitnessReader.isAvailable()) {
     activityLog.log('ERROR: Web Bluetooth is not available in this browser/environment');
     statusIndicator.disableScan();
     return false;
@@ -33,46 +69,50 @@ function checkBluetoothAvailability(): boolean {
   return true;
 }
 
+// =============================================================================
+// SCAN HANDLING
+// =============================================================================
+
 /**
- * Handle scan button click
+ * Handle scan button click.
+ * Initiates device scanning and connection flow.
  */
 async function handleScan(): Promise<void> {
   activityLog.log('Scanning for Bluetooth devices (3 seconds)...');
-  console.log('[Renderer] handleScan called');
 
   statusIndicator.setScanning(true);
   deviceList.hide();
   awaitingScanResults = true;
 
-  // Tell main process to start fresh
+  // Tell main process to start fresh scan
   if (window.electronAPI) {
     window.electronAPI.startBluetoothScan();
   }
 
   try {
-    console.log('[Renderer] Calling bluetoothService.scanForDevices()');
-    pendingBluetoothDevice = await bluetoothService.scanForDevices();
-
-    console.log('[Renderer] scanForDevices resolved:', pendingBluetoothDevice?.name);
+    pendingBluetoothDevice = await fitnessReader.scanForDevices();
 
     if (pendingBluetoothDevice) {
       activityLog.log(`Connecting to ${pendingBluetoothDevice.name || 'Unknown'}...`);
       await connectToDevice(pendingBluetoothDevice);
     }
   } catch (error) {
-    console.log('[Renderer] Scan error:', error);
     activityLog.log(`Scan error: ${(error as Error).message}`);
   } finally {
     statusIndicator.setScanning(false);
   }
 }
 
+// =============================================================================
+// DEVICE SELECTION
+// =============================================================================
+
 /**
- * Handle device selection from the list
+ * Handle device selection from the displayed list.
+ * Called when user clicks a device in the list.
  */
 function handleDeviceSelection(deviceId: string, deviceName: string): void {
   activityLog.log(`Selecting ${deviceName || 'Unknown'}...`);
-  console.log('[Renderer] User clicked device:', deviceId);
 
   // Stop listening for scan results
   awaitingScanResults = false;
@@ -85,14 +125,18 @@ function handleDeviceSelection(deviceId: string, deviceName: string): void {
   deviceList.hide();
 }
 
+// =============================================================================
+// CONNECTION HANDLING
+// =============================================================================
+
 /**
- * Connect to a Bluetooth device
+ * Connect to a Bluetooth device.
  */
 async function connectToDevice(device: BluetoothDevice): Promise<void> {
   activityLog.log(`Connecting to ${device.name || 'Unknown'}...`);
 
   try {
-    await bluetoothService.connect(device);
+    await fitnessReader.connect(device);
     activityLog.log(`Connected to ${device.name || 'Unknown'}`);
     statusIndicator.setConnected(device.name || 'Unknown Device');
   } catch (error) {
@@ -102,29 +146,33 @@ async function connectToDevice(device: BluetoothDevice): Promise<void> {
 }
 
 /**
- * Handle disconnect button click
+ * Handle disconnect button click.
  */
 async function handleDisconnect(): Promise<void> {
   activityLog.log('Disconnecting...');
-  await bluetoothService.disconnect();
+  await fitnessReader.disconnect();
   activityLog.log('Disconnected');
   statusIndicator.setDisconnected();
   dataDisplay.reset();
 }
 
+// =============================================================================
+// CALLBACKS SETUP
+// =============================================================================
+
 /**
- * Set up Bluetooth service callbacks
+ * Set up callbacks for fitness data and connection changes.
  */
-function setupBluetoothCallbacks(): void {
-  // Handle fitness data updates
-  bluetoothService.onData((data: FitnessData) => {
+function setupFitnessReaderCallbacks(): void {
+  // When fitness data arrives, update the display
+  fitnessReader.onFitnessData((data) => {
     dataDisplay.update(data);
   });
 
-  // Handle connection status changes
-  bluetoothService.onConnectionChange((connected, deviceInfo) => {
-    if (connected && deviceInfo) {
-      statusIndicator.setConnected(deviceInfo.name);
+  // When connection status changes, update the UI
+  fitnessReader.onConnectionChange((connected, deviceName) => {
+    if (connected && deviceName) {
+      statusIndicator.setConnected(deviceName);
     } else {
       statusIndicator.setDisconnected();
       dataDisplay.reset();
@@ -134,22 +182,17 @@ function setupBluetoothCallbacks(): void {
 }
 
 /**
- * Set up IPC listeners for main process communication
+ * Set up IPC listeners for main process communication.
+ * Handles the device list display from Electron's Bluetooth scanning.
  */
 function setupIpcListeners(): void {
   if (!window.electronAPI) {
-    console.log('[Renderer] electronAPI NOT available');
     return;
   }
 
-  console.log('[Renderer] electronAPI available, setting up scan complete listener');
-
   window.electronAPI.onBluetoothScanComplete((devices: BluetoothDeviceInfo[]) => {
-    console.log('[Renderer] Scan complete, received devices:', devices.length);
-
     // Only show devices if we're still waiting for scan results
     if (!awaitingScanResults) {
-      console.log('[Renderer] Ignoring scan results - device already selected');
       return;
     }
 
@@ -161,12 +204,15 @@ function setupIpcListeners(): void {
   });
 }
 
+// =============================================================================
+// INITIALIZATION
+// =============================================================================
+
 /**
- * Initialize the application
+ * Initialize the application.
+ * Sets up UI components, callbacks, and event listeners.
  */
 function init(): void {
-  console.log('[Renderer] init() called');
-
   // Initialize UI components
   activityLog = new ActivityLog('log');
   dataDisplay = new DataDisplay();
@@ -184,17 +230,18 @@ function init(): void {
   statusIndicator.onScanClick(handleScan);
   statusIndicator.onDisconnectClick(handleDisconnect);
   deviceList.onSelect(handleDeviceSelection);
-  console.log('[Renderer] Event listeners attached');
 
-  // Set up Bluetooth callbacks
-  setupBluetoothCallbacks();
+  // Set up fitness reader callbacks
+  setupFitnessReaderCallbacks();
 
-  // Set up IPC listeners
+  // Set up IPC listeners for Electron
   setupIpcListeners();
 
   activityLog.log('Ready. Click "Scan for Devices" to find fitness equipment.');
-  console.log('[Renderer] Initialization complete');
 }
 
-// Start the application
+// =============================================================================
+// START APPLICATION
+// =============================================================================
+
 init();
