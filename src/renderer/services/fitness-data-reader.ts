@@ -8,6 +8,7 @@
  *   This is the ONLY service that index.ts should interact with for fitness data.
  *
  * Responsibilities:
+ *   - Configure BluetoothService with fitness-specific UUIDs (from fitness-characteristics)
  *   - Coordinate BluetoothService and FitnessDataParser
  *   - Provide simple callbacks: onFitnessData(), onConnectionChange()
  *   - Provide simple methods: scanForDevices(), connect(), disconnect()
@@ -15,11 +16,15 @@
  *
  * What this reader does NOT do:
  *   - Know about Bluetooth protocols (delegates to BluetoothService)
- *   - Know about data formats (delegates to FitnessDataParser)
+ *   - Know about data byte formats (delegates to FitnessDataParser)
  *   - Manipulate the DOM or UI elements
  *
  * Architecture:
- *   index.ts → FitnessDataReader → FitnessDataParser → BluetoothService
+ *   index.ts → FitnessDataReader → FitnessDataParser
+ *                                ↘ BluetoothService
+ *
+ *   FitnessDataReader uses fitness-characteristics.ts to configure BluetoothService
+ *   with the correct UUIDs, then routes raw data through the Parser.
  *
  * Usage:
  *   const reader = new FitnessDataReader();
@@ -31,6 +36,7 @@
  */
 
 import { FitnessData } from '../../shared/types';
+import { FITNESS_CHARACTERISTICS, getServiceUuids } from '../../shared/constants';
 import { bluetoothService, DeviceInfo } from './bluetooth-service';
 import { FitnessDataParser } from './fitness-data-parser';
 
@@ -51,6 +57,7 @@ export class FitnessDataReader {
 
   constructor() {
     this.parser = new FitnessDataParser();
+    this.configureBluetoothService();
     this.setupBluetoothCallbacks();
   }
 
@@ -82,7 +89,9 @@ export class FitnessDataReader {
    * Returns the selected device or null if user cancelled.
    */
   async scanForDevices(): Promise<BluetoothDevice | null> {
-    return bluetoothService.scanForDevices();
+    // Pass fitness service UUIDs to BluetoothService
+    const serviceUuids = getServiceUuids();
+    return bluetoothService.scanForDevices(serviceUuids);
   }
 
   /**
@@ -104,6 +113,20 @@ export class FitnessDataReader {
    */
   isConnected(): boolean {
     return bluetoothService.isConnected();
+  }
+
+  /**
+   * Configure BluetoothService with fitness-specific subscriptions.
+   * This passes the UUIDs from fitness-characteristics to BluetoothService.
+   */
+  private configureBluetoothService(): void {
+    // Convert fitness characteristics to subscription format
+    const subscriptions = FITNESS_CHARACTERISTICS.map(config => ({
+      serviceUuid: config.serviceUuid,
+      characteristicUuid: config.characteristicUuid,
+    }));
+
+    bluetoothService.setSubscriptions(subscriptions);
   }
 
   /**

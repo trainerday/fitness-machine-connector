@@ -4,39 +4,43 @@
  * =============================================================================
  *
  * Purpose:
- *   Pure Bluetooth communication layer. Handles ONLY Bluetooth operations.
- *   This service knows nothing about fitness data, parsing, or the UI.
+ *   Pure Bluetooth communication layer. Handles ONLY generic Bluetooth operations.
+ *   This service knows NOTHING about fitness, data formats, or what the UUIDs mean.
  *
  * Responsibilities:
  *   - Check if Web Bluetooth is available
  *   - Scan for Bluetooth devices
  *   - Connect to a device's GATT server
- *   - Subscribe to characteristics and emit raw data
+ *   - Subscribe to characteristics (given a list of UUIDs)
+ *   - Emit raw data with the characteristic UUID that sent it
  *   - Handle disconnection
  *
- * What this service does NOT do:
- *   - Parse or interpret data (that's the Parser's job)
- *   - Know about fitness metrics like power, cadence, etc.
- *   - Interact with the UI
+ * What this service does NOT know:
+ *   - What the UUIDs mean (e.g., "0x2ad2 is FTMS Indoor Bike Data")
+ *   - How to parse the data
+ *   - Anything about fitness, power, cadence, heart rate, etc.
  *
- * Usage:
- *   This service is used by FitnessDataReader, not directly by the UI.
+ * This design allows the BluetoothService to be reused for ANY Bluetooth device,
+ * not just fitness equipment.
  *
  * =============================================================================
  */
 
 /**
- * Identifies which type of Bluetooth characteristic sent the data.
- * This allows the parser to know how to interpret the raw bytes.
+ * Configuration for a characteristic to subscribe to.
+ * Just UUIDs - no interpretation of what they mean.
  */
-export type CharacteristicType = 'ftms-indoor-bike' | 'cycling-power' | 'heart-rate';
+export interface CharacteristicSubscription {
+  serviceUuid: number;
+  characteristicUuid: number;
+}
 
 /**
- * Raw data packet from a Bluetooth characteristic.
- * Contains the characteristic type and raw bytes - no interpretation.
+ * Raw data received from a Bluetooth characteristic.
+ * Contains the characteristic UUID and raw bytes - no interpretation.
  */
 export interface RawBluetoothData {
-  characteristicType: CharacteristicType;
+  characteristicUuid: number;
   rawValue: DataView;
 }
 
@@ -54,31 +58,12 @@ type RawDataCallback = (data: RawBluetoothData) => void;
 /** Callback type for connection status events */
 type ConnectionCallback = (connected: boolean, device?: DeviceInfo) => void;
 
-/**
- * Standard Bluetooth GATT Service UUIDs.
- * These are defined by the Bluetooth SIG specification.
- */
-const SERVICE_UUIDS = {
-  FTMS: 0x1826,              // Fitness Machine Service
-  CYCLING_POWER: 0x1818,     // Cycling Power Service
-  HEART_RATE: 0x180d,        // Heart Rate Service
-} as const;
-
-/**
- * Standard Bluetooth GATT Characteristic UUIDs.
- * These identify specific data points within a service.
- */
-const CHARACTERISTIC_UUIDS = {
-  FTMS_INDOOR_BIKE_DATA: 0x2ad2,
-  CYCLING_POWER_MEASUREMENT: 0x2a63,
-  HEART_RATE_MEASUREMENT: 0x2a37,
-} as const;
-
 class BluetoothService {
   private connectedDevice: BluetoothDevice | null = null;
   private gattServer: BluetoothRemoteGATTServer | null = null;
   private rawDataCallback: RawDataCallback | null = null;
   private connectionCallback: ConnectionCallback | null = null;
+  private subscriptions: CharacteristicSubscription[] = [];
 
   /**
    * Check if Web Bluetooth API is available in this environment.
@@ -89,7 +74,7 @@ class BluetoothService {
 
   /**
    * Register a callback to receive raw Bluetooth data.
-   * The callback receives unprocessed bytes with a characteristic type identifier.
+   * The callback receives unprocessed bytes with the characteristic UUID.
    */
   onRawData(callback: RawDataCallback): void {
     this.rawDataCallback = callback;
@@ -103,10 +88,20 @@ class BluetoothService {
   }
 
   /**
+   * Set which characteristics to subscribe to when connecting.
+   * This should be called before connect().
+   */
+  setSubscriptions(subscriptions: CharacteristicSubscription[]): void {
+    this.subscriptions = subscriptions;
+  }
+
+  /**
    * Scan for available Bluetooth devices.
    * Returns the selected device or null if cancelled.
+   *
+   * @param serviceUuids - List of service UUIDs to filter/allow access to
    */
-  async scanForDevices(): Promise<BluetoothDevice | null> {
+  async scanForDevices(serviceUuids: number[]): Promise<BluetoothDevice | null> {
     if (!this.isAvailable()) {
       throw new Error('Web Bluetooth is not available');
     }
@@ -114,11 +109,7 @@ class BluetoothService {
     try {
       const device = await navigator.bluetooth.requestDevice({
         acceptAllDevices: true,
-        optionalServices: [
-          SERVICE_UUIDS.FTMS,
-          SERVICE_UUIDS.CYCLING_POWER,
-          SERVICE_UUIDS.HEART_RATE,
-        ],
+        optionalServices: serviceUuids,
       });
       return device;
     } catch (error) {
@@ -130,7 +121,7 @@ class BluetoothService {
   }
 
   /**
-   * Connect to a Bluetooth device and start listening for data.
+   * Connect to a Bluetooth device and subscribe to configured characteristics.
    */
   async connect(device: BluetoothDevice): Promise<void> {
     if (!device.gatt) {
@@ -173,34 +164,14 @@ class BluetoothService {
   }
 
   /**
-   * Subscribe to available fitness-related characteristics.
-   * Tries FTMS first, then falls back to individual services.
+   * Subscribe to all configured characteristics.
    */
   private async subscribeToCharacteristics(): Promise<void> {
     if (!this.gattServer) return;
 
-    // Try FTMS first (most complete data)
-    const ftmsSuccess = await this.trySubscribe(
-      SERVICE_UUIDS.FTMS,
-      CHARACTERISTIC_UUIDS.FTMS_INDOOR_BIKE_DATA,
-      'ftms-indoor-bike'
-    );
-
-    // If FTMS not available, try Cycling Power
-    if (!ftmsSuccess) {
-      await this.trySubscribe(
-        SERVICE_UUIDS.CYCLING_POWER,
-        CHARACTERISTIC_UUIDS.CYCLING_POWER_MEASUREMENT,
-        'cycling-power'
-      );
+    for (const sub of this.subscriptions) {
+      await this.trySubscribe(sub.serviceUuid, sub.characteristicUuid);
     }
-
-    // Always try Heart Rate (can be additional to other services)
-    await this.trySubscribe(
-      SERVICE_UUIDS.HEART_RATE,
-      CHARACTERISTIC_UUIDS.HEART_RATE_MEASUREMENT,
-      'heart-rate'
-    );
   }
 
   /**
@@ -209,8 +180,7 @@ class BluetoothService {
    */
   private async trySubscribe(
     serviceUuid: number,
-    characteristicUuid: number,
-    characteristicType: CharacteristicType
+    characteristicUuid: number
   ): Promise<boolean> {
     if (!this.gattServer) return false;
 
@@ -221,7 +191,7 @@ class BluetoothService {
       characteristic.addEventListener('characteristicvaluechanged', (event) => {
         const value = (event.target as BluetoothRemoteGATTCharacteristic).value;
         if (value) {
-          this.emitRawData(characteristicType, value);
+          this.emitRawData(characteristicUuid, value);
         }
       });
 
@@ -235,9 +205,9 @@ class BluetoothService {
   /**
    * Emit raw data to registered callback.
    */
-  private emitRawData(characteristicType: CharacteristicType, rawValue: DataView): void {
+  private emitRawData(characteristicUuid: number, rawValue: DataView): void {
     if (this.rawDataCallback) {
-      this.rawDataCallback({ characteristicType, rawValue });
+      this.rawDataCallback({ characteristicUuid, rawValue });
     }
   }
 

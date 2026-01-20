@@ -8,6 +8,7 @@
  *   This parser knows how to interpret binary data from fitness devices.
  *
  * Responsibilities:
+ *   - Map characteristic UUIDs to parsing functions (using fitness-characteristics config)
  *   - Parse FTMS Indoor Bike Data characteristic bytes
  *   - Parse Cycling Power Measurement characteristic bytes
  *   - Parse Heart Rate Measurement characteristic bytes
@@ -27,24 +28,39 @@
  */
 
 import { FitnessData } from '../../shared/types';
-import { CharacteristicType, RawBluetoothData } from './bluetooth-service';
+import { getCharacteristicType, FitnessCharacteristicType } from '../../shared/constants';
+import { RawBluetoothData } from './bluetooth-service';
 
 /**
  * Parses raw Bluetooth characteristic data into structured FitnessData.
  */
 export class FitnessDataParser {
   /**
-   * Parse raw Bluetooth data based on its characteristic type.
-   * This is the main entry point - it routes to the appropriate parser.
+   * Parse raw Bluetooth data based on its characteristic UUID.
+   * Uses the fitness-characteristics config to map UUID to type.
    */
   parse(rawData: RawBluetoothData): FitnessData {
-    switch (rawData.characteristicType) {
+    const type = getCharacteristicType(rawData.characteristicUuid);
+
+    if (!type) {
+      // Unknown characteristic - return empty data
+      return {};
+    }
+
+    return this.parseByType(type, rawData.rawValue);
+  }
+
+  /**
+   * Parse data based on the fitness characteristic type.
+   */
+  private parseByType(type: FitnessCharacteristicType, value: DataView): FitnessData {
+    switch (type) {
       case 'ftms-indoor-bike':
-        return this.parseFtmsIndoorBikeData(rawData.rawValue);
+        return this.parseFtmsIndoorBikeData(value);
       case 'cycling-power':
-        return this.parseCyclingPowerMeasurement(rawData.rawValue);
+        return this.parseCyclingPowerMeasurement(value);
       case 'heart-rate':
-        return this.parseHeartRateMeasurement(rawData.rawValue);
+        return this.parseHeartRateMeasurement(value);
       default:
         return {};
     }
@@ -58,7 +74,7 @@ export class FitnessDataParser {
    *   - Remaining bytes: Optional fields based on flags
    *
    * Flag bits:
-   *   - Bit 0: More Data (0 = present, 1 = not present) - Instantaneous Speed
+   *   - Bit 0: More Data (0 = instantaneous speed present)
    *   - Bit 1: Average Speed present
    *   - Bit 2: Instantaneous Cadence present
    *   - Bit 3: Average Cadence present

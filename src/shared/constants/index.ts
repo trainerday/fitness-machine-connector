@@ -1,4 +1,11 @@
 /**
- * Re-export all shared constants
+ * =============================================================================
+ * SHARED CONSTANTS INDEX
+ * =============================================================================
+ *
+ * Exports all shared constants used across the application.
+ *
+ * =============================================================================
  */
-export * from './bluetooth-uuids';
+
+export * from './fitness-characteristics';
