@@ -9,6 +9,7 @@ export class BluetoothDeviceManager {
   private selectCallback: ((deviceId: string) => void) | null = null;
   private scanTimeout: NodeJS.Timeout | null = null;
   private onScanComplete: ((devices: Electron.BluetoothDevice[]) => void) | null = null;
+  private scanListSent = false; // Tracks if we've already sent the device list
 
   /**
    * Set callback to be called when scan completes
@@ -26,6 +27,11 @@ export class BluetoothDeviceManager {
   ): void {
     // Store the callback for later use when user selects a device
     this.selectCallback = callback;
+
+    // Don't accumulate or start timers if we've already sent the list
+    if (this.scanListSent) {
+      return;
+    }
 
     // Accumulate devices (use Map to deduplicate by deviceId)
     devices.forEach((device) => {
@@ -48,9 +54,16 @@ export class BluetoothDeviceManager {
    * Complete the scan and notify listeners
    */
   private completeScan(): void {
+    // Don't send if already sent
+    if (this.scanListSent) {
+      this.scanTimeout = null;
+      return;
+    }
+
     console.log(`[BluetoothDeviceManager] Scan complete. Found ${this.devices.size} devices.`);
 
     const deviceList = Array.from(this.devices.values());
+    this.scanListSent = true;
 
     if (this.onScanComplete) {
       this.onScanComplete(deviceList);
@@ -65,11 +78,20 @@ export class BluetoothDeviceManager {
   selectDevice(deviceId: string): void {
     console.log(`[BluetoothDeviceManager] User selected device: ${deviceId}`);
 
+    // Clear any pending timeout
+    if (this.scanTimeout) {
+      clearTimeout(this.scanTimeout);
+      this.scanTimeout = null;
+    }
+
     if (this.selectCallback) {
       this.selectCallback(deviceId);
       this.selectCallback = null;
-      this.devices.clear();
     }
+
+    // Clear state after selection
+    this.devices.clear();
+    this.scanListSent = false;
   }
 
   /**
@@ -99,6 +121,7 @@ export class BluetoothDeviceManager {
    */
   private clearScanState(): void {
     this.devices.clear();
+    this.scanListSent = false;
 
     if (this.scanTimeout) {
       clearTimeout(this.scanTimeout);

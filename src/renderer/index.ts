@@ -11,6 +11,9 @@ import { FitnessData, BluetoothDeviceInfo } from '../shared/types';
 // Store the pending device from Web Bluetooth for connection
 let pendingBluetoothDevice: BluetoothDevice | null = null;
 
+// Track if we're waiting for scan results (prevents showing list after selection)
+let awaitingScanResults = false;
+
 // UI Components
 let activityLog: ActivityLog;
 let dataDisplay: DataDisplay;
@@ -39,6 +42,7 @@ async function handleScan(): Promise<void> {
 
   statusIndicator.setScanning(true);
   deviceList.hide();
+  awaitingScanResults = true;
 
   // Tell main process to start fresh
   if (window.electronAPI) {
@@ -69,6 +73,9 @@ async function handleScan(): Promise<void> {
 function handleDeviceSelection(deviceId: string, deviceName: string): void {
   activityLog.log(`Selecting ${deviceName || 'Unknown'}...`);
   console.log('[Renderer] User clicked device:', deviceId);
+
+  // Stop listening for scan results
+  awaitingScanResults = false;
 
   // Tell main process which device was selected
   if (window.electronAPI) {
@@ -139,6 +146,16 @@ function setupIpcListeners(): void {
 
   window.electronAPI.onBluetoothScanComplete((devices: BluetoothDeviceInfo[]) => {
     console.log('[Renderer] Scan complete, received devices:', devices.length);
+
+    // Only show devices if we're still waiting for scan results
+    if (!awaitingScanResults) {
+      console.log('[Renderer] Ignoring scan results - device already selected');
+      return;
+    }
+
+    // Mark that we've received and displayed the results
+    awaitingScanResults = false;
+
     deviceList.displayDevices(devices);
     activityLog.log(`Found ${devices.length} device(s). Click one to connect.`);
   });
