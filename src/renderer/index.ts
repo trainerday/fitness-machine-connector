@@ -3,7 +3,7 @@
  * Coordinates UI components with Bluetooth service
  */
 
-import '../index.css';
+import '../styles/index.css';
 import { ActivityLog, DataDisplay, StatusIndicator, DeviceList } from './ui';
 import { bluetoothService } from './services';
 import { FitnessData, BluetoothDeviceInfo } from '../shared/types';
