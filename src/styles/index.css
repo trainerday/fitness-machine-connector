@@ -218,6 +218,60 @@ section {
   font-style: italic;
 }
 
+/* FTMS Core Grid - 3 columns for main fields */
+.ftms-core-grid {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* FTMS Additional Grid - 3 columns for extra fields */
+.ftms-additional-grid {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* Smaller data cards for additional fields */
+.data-card-small {
+  padding: 15px;
+}
+
+.data-card-small .data-value {
+  font-size: 24px;
+}
+
+/* Expandable section */
+.expandable-section {
+  margin-top: 15px;
+}
+
+.expand-btn {
+  background: transparent;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: color 0.2s ease;
+}
+
+.expand-btn:hover {
+  color: #4cc9f0;
+}
+
+.expand-icon {
+  font-size: 10px;
+  transition: transform 0.2s ease;
+}
+
+.expand-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.additional-fields {
+  margin-top: 15px;
+}
+
 .data-card {
   background: #1a1a2e;
   border-radius: 12px;

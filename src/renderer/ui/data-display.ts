@@ -2,7 +2,7 @@
  * Data display UI component - shows live fitness data and FTMS output
  *
  * Live Data: Dynamically shows fields specific to the connected device type
- * FTMS Output: Shows the translated FTMS Indoor Bike Data fields
+ * FTMS Output: Shows the core fields (Power, Cadence, HR) with expandable additional fields
  */
 
 import { FitnessData, FtmsOutput } from '../../shared/types';
@@ -105,32 +105,42 @@ export class DataDisplay {
   private currentSourceType: FitnessData['sourceType'] | null = null;
   private liveFieldElements: Map<string, HTMLSpanElement> = new Map();
 
-  // FTMS output elements
+  // FTMS output elements - core fields
   private ftmsElements: {
-    speed: HTMLSpanElement;
-    cadence: HTMLSpanElement;
     power: HTMLSpanElement;
+    cadence: HTMLSpanElement;
     hr: HTMLSpanElement;
+    // Additional fields
     distance: HTMLSpanElement;
     calories: HTMLSpanElement;
-    resistance: HTMLSpanElement;
     elapsed: HTMLSpanElement;
   };
+
+  // Expandable section elements
+  private toggleBtn: HTMLButtonElement;
+  private expandIcon: HTMLSpanElement;
+  private additionalFields: HTMLElement;
+  private isExpanded: boolean = false;
 
   constructor() {
     this.liveDataGrid = this.getElement('live-data-grid');
     this.sourceTypeElement = this.getElement('source-type') as HTMLSpanElement;
 
     this.ftmsElements = {
-      speed: this.getElement('ftms-speed') as HTMLSpanElement,
-      cadence: this.getElement('ftms-cadence') as HTMLSpanElement,
       power: this.getElement('ftms-power') as HTMLSpanElement,
+      cadence: this.getElement('ftms-cadence') as HTMLSpanElement,
       hr: this.getElement('ftms-hr') as HTMLSpanElement,
       distance: this.getElement('ftms-distance') as HTMLSpanElement,
       calories: this.getElement('ftms-calories') as HTMLSpanElement,
-      resistance: this.getElement('ftms-resistance') as HTMLSpanElement,
       elapsed: this.getElement('ftms-elapsed') as HTMLSpanElement,
     };
+
+    // Set up expandable section
+    this.toggleBtn = this.getElement('toggle-additional') as HTMLButtonElement;
+    this.expandIcon = this.toggleBtn.querySelector('.expand-icon') as HTMLSpanElement;
+    this.additionalFields = this.getElement('additional-fields');
+
+    this.setupExpandToggle();
   }
 
   private getElement(id: string): HTMLElement {
@@ -139,6 +149,25 @@ export class DataDisplay {
       throw new Error(`Data display element not found: ${id}`);
     }
     return element;
+  }
+
+  /**
+   * Set up the expand/collapse toggle for additional fields
+   */
+  private setupExpandToggle(): void {
+    this.toggleBtn.addEventListener('click', () => {
+      this.isExpanded = !this.isExpanded;
+
+      if (this.isExpanded) {
+        this.additionalFields.style.display = 'block';
+        this.expandIcon.classList.add('expanded');
+        this.toggleBtn.innerHTML = '<span class="expand-icon expanded">▶</span> Hide additional fields';
+      } else {
+        this.additionalFields.style.display = 'none';
+        this.expandIcon.classList.remove('expanded');
+        this.toggleBtn.innerHTML = '<span class="expand-icon">▶</span> Show additional fields';
+      }
+    });
   }
 
   /**
@@ -208,41 +237,28 @@ export class DataDisplay {
    * Update the FTMS output display
    */
   private updateFtmsOutput(output: FtmsOutput): void {
-    this.ftmsElements.speed.textContent = output.speed.toFixed(1);
-    this.ftmsElements.cadence.textContent = Math.round(output.cadence).toString();
+    // Core fields
     this.ftmsElements.power.textContent = Math.round(output.power).toString();
+    this.ftmsElements.cadence.textContent = Math.round(output.cadence).toString();
     this.ftmsElements.hr.textContent = output.heartRate !== undefined ? Math.round(output.heartRate).toString() : '--';
+
+    // Additional fields
     this.ftmsElements.distance.textContent = output.distance !== undefined ? Math.round(output.distance).toString() : '--';
     this.ftmsElements.calories.textContent = output.calories !== undefined ? Math.round(output.calories).toString() : '--';
-    this.ftmsElements.resistance.textContent = output.resistance !== undefined ? output.resistance.toFixed(1) : '--';
     this.ftmsElements.elapsed.textContent = output.elapsedTime !== undefined ? formatDuration(output.elapsedTime) : '--';
   }
 
   /**
    * Convert raw fitness data to FTMS output format.
-   * Calculates speed from power if not available.
+   * Only passes through data that the device provides - no calculations.
    */
   private convertToFtms(data: FitnessData): FtmsOutput {
-    const power = data.power ?? 0;
-    const cadence = data.cadence ?? 0;
-
-    // Calculate speed from power if not provided
-    // Using a simple formula based on typical cycling physics
-    let speed = data.speed;
-    if (speed === undefined && power > 0) {
-      // Simple estimation: ~30 km/h at 200W for a typical rider
-      // Formula: speed = (power / 6.5)^0.5 * 3.6
-      speed = Math.sqrt(power / 6.5) * 3.6;
-    }
-
     return {
-      power,
-      cadence,
-      speed: speed ?? 0,
+      power: data.power ?? 0,
+      cadence: data.cadence ?? 0,
       heartRate: data.heartRate,
       distance: data.distance ? data.distance * 1000 : undefined, // Convert km to meters
       calories: data.calories,
-      resistance: data.resistance,
       elapsedTime: data.duration,
     };
   }
@@ -257,14 +273,19 @@ export class DataDisplay {
     this.liveDataGrid.innerHTML = '<div class="no-data">Connect a device to see live data</div>';
     this.sourceTypeElement.textContent = '--';
 
-    // Reset FTMS output
-    this.ftmsElements.speed.textContent = '--';
-    this.ftmsElements.cadence.textContent = '--';
+    // Reset FTMS output - core fields
     this.ftmsElements.power.textContent = '--';
+    this.ftmsElements.cadence.textContent = '--';
     this.ftmsElements.hr.textContent = '--';
+
+    // Reset FTMS output - additional fields
     this.ftmsElements.distance.textContent = '--';
     this.ftmsElements.calories.textContent = '--';
-    this.ftmsElements.resistance.textContent = '--';
     this.ftmsElements.elapsed.textContent = '--';
+
+    // Collapse additional fields
+    this.isExpanded = false;
+    this.additionalFields.style.display = 'none';
+    this.toggleBtn.innerHTML = '<span class="expand-icon">▶</span> Show additional fields';
   }
 }

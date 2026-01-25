@@ -46,26 +46,19 @@
 
       <section class="data-section ftms-section">
         <h2>FTMS Output</h2>
-        <div class="data-grid data-grid-extended">
+        <div class="data-grid ftms-core-grid">
           <div class="data-card">
-            <div class="data-label">Inst. Speed</div>
-            <div class="data-value">
-              <span id="ftms-speed">--</span>
-              <span class="data-unit">km/h</span>
-            </div>
-          </div>
-          <div class="data-card">
-            <div class="data-label">Inst. Cadence</div>
-            <div class="data-value">
-              <span id="ftms-cadence">--</span>
-              <span class="data-unit">RPM</span>
-            </div>
-          </div>
-          <div class="data-card">
-            <div class="data-label">Inst. Power</div>
+            <div class="data-label">Power</div>
             <div class="data-value">
               <span id="ftms-power">--</span>
               <span class="data-unit">W</span>
+            </div>
+          </div>
+          <div class="data-card">
+            <div class="data-label">Cadence</div>
+            <div class="data-value">
+              <span id="ftms-cadence">--</span>
+              <span class="data-unit">RPM</span>
             </div>
           </div>
           <div class="data-card">
@@ -75,32 +68,34 @@
               <span class="data-unit">BPM</span>
             </div>
           </div>
-          <div class="data-card">
-            <div class="data-label">Total Distance</div>
-            <div class="data-value">
-              <span id="ftms-distance">--</span>
-              <span class="data-unit">m</span>
-            </div>
-          </div>
-          <div class="data-card">
-            <div class="data-label">Total Energy</div>
-            <div class="data-value">
-              <span id="ftms-calories">--</span>
-              <span class="data-unit">kcal</span>
-            </div>
-          </div>
-          <div class="data-card">
-            <div class="data-label">Resistance</div>
-            <div class="data-value">
-              <span id="ftms-resistance">--</span>
-              <span class="data-unit"></span>
-            </div>
-          </div>
-          <div class="data-card">
-            <div class="data-label">Elapsed Time</div>
-            <div class="data-value">
-              <span id="ftms-elapsed">--</span>
-              <span class="data-unit"></span>
+        </div>
+        <div class="expandable-section">
+          <button id="toggle-additional" class="expand-btn">
+            <span class="expand-icon">▶</span> Show additional fields
+          </button>
+          <div id="additional-fields" class="additional-fields" style="display: none;">
+            <div class="data-grid ftms-additional-grid">
+              <div class="data-card data-card-small">
+                <div class="data-label">Distance</div>
+                <div class="data-value">
+                  <span id="ftms-distance">--</span>
+                  <span class="data-unit">m</span>
+                </div>
+              </div>
+              <div class="data-card data-card-small">
+                <div class="data-label">Calories</div>
+                <div class="data-value">
+                  <span id="ftms-calories">--</span>
+                  <span class="data-unit">kcal</span>
+                </div>
+              </div>
+              <div class="data-card data-card-small">
+                <div class="data-label">Elapsed Time</div>
+                <div class="data-value">
+                  <span id="ftms-elapsed">--</span>
+                  <span class="data-unit"></span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
