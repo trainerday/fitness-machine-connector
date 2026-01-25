@@ -28,7 +28,8 @@
 export type FitnessCharacteristicType =
   | 'ftms-indoor-bike'
   | 'cycling-power'
-  | 'heart-rate';
+  | 'heart-rate'
+  | 'keiser-m3i';
 
 /**
  * Configuration for a single fitness characteristic.
@@ -66,6 +67,12 @@ export const FITNESS_CHARACTERISTICS: FitnessCharacteristicConfig[] = [
     serviceUuid: 0x180d,    // Heart Rate Service
     characteristicUuid: 0x2a37,  // Heart Rate Measurement
     description: 'Heart Rate Measurement - provides heart rate in BPM',
+  },
+  {
+    type: 'keiser-m3i',
+    serviceUuid: 0x0001,    // Keiser Custom Service
+    characteristicUuid: 0x0002,  // Keiser M3i Data
+    description: 'Keiser M3i proprietary format - provides power, cadence, heart rate, gear',
   },
 ];
 

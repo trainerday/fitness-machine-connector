@@ -184,6 +184,31 @@ section {
   gap: 15px;
 }
 
+.data-grid-extended {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+/* Source Badge */
+.source-badge {
+  background: rgba(76, 201, 240, 0.2);
+  color: #4cc9f0;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  margin-left: 10px;
+  font-weight: 400;
+}
+
+/* FTMS Section */
+.ftms-section {
+  border: 2px solid rgba(76, 201, 240, 0.3);
+}
+
+.ftms-section h2 {
+  color: #4cc9f0;
+}
+
 .data-card {
   background: #1a1a2e;
   border-radius: 12px;
