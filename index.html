@@ -38,81 +38,34 @@
 
       <section class="data-section">
         <h2>Live Data <span class="source-badge" id="source-type">--</span></h2>
-        <div class="data-grid data-grid-extended">
-          <div class="data-card">
-            <div class="data-label">Power</div>
-            <div class="data-value">
-              <span id="live-power">--</span>
-              <span class="data-unit">W</span>
-            </div>
-          </div>
-          <div class="data-card">
-            <div class="data-label">Cadence</div>
-            <div class="data-value">
-              <span id="live-cadence">--</span>
-              <span class="data-unit">RPM</span>
-            </div>
-          </div>
-          <div class="data-card">
-            <div class="data-label">Heart Rate</div>
-            <div class="data-value">
-              <span id="live-hr">--</span>
-              <span class="data-unit">BPM</span>
-            </div>
-          </div>
-          <div class="data-card">
-            <div class="data-label">Speed</div>
-            <div class="data-value">
-              <span id="live-speed">--</span>
-              <span class="data-unit">km/h</span>
-            </div>
-          </div>
-          <div class="data-card">
-            <div class="data-label">Distance</div>
-            <div class="data-value">
-              <span id="live-distance">--</span>
-              <span class="data-unit">km</span>
-            </div>
-          </div>
-          <div class="data-card">
-            <div class="data-label">Calories</div>
-            <div class="data-value">
-              <span id="live-calories">--</span>
-              <span class="data-unit">kcal</span>
-            </div>
-          </div>
-          <div class="data-card">
-            <div class="data-label">Duration</div>
-            <div class="data-value">
-              <span id="live-duration">--</span>
-              <span class="data-unit"></span>
-            </div>
-          </div>
-          <div class="data-card">
-            <div class="data-label">Gear</div>
-            <div class="data-value">
-              <span id="live-gear">--</span>
-              <span class="data-unit"></span>
-            </div>
-          </div>
+        <div id="live-data-grid" class="data-grid">
+          <!-- Dynamically populated based on source device type -->
+          <div class="no-data">Connect a device to see live data</div>
         </div>
       </section>
 
       <section class="data-section ftms-section">
         <h2>FTMS Output</h2>
-        <div class="data-grid">
+        <div class="data-grid data-grid-extended">
           <div class="data-card">
-            <div class="data-label">Power</div>
+            <div class="data-label">Inst. Speed</div>
             <div class="data-value">
-              <span id="ftms-power">--</span>
-              <span class="data-unit">W</span>
+              <span id="ftms-speed">--</span>
+              <span class="data-unit">km/h</span>
             </div>
           </div>
           <div class="data-card">
-            <div class="data-label">Cadence</div>
+            <div class="data-label">Inst. Cadence</div>
             <div class="data-value">
               <span id="ftms-cadence">--</span>
               <span class="data-unit">RPM</span>
+            </div>
+          </div>
+          <div class="data-card">
+            <div class="data-label">Inst. Power</div>
+            <div class="data-value">
+              <span id="ftms-power">--</span>
+              <span class="data-unit">W</span>
             </div>
           </div>
           <div class="data-card">
@@ -123,10 +76,31 @@
             </div>
           </div>
           <div class="data-card">
-            <div class="data-label">Speed</div>
+            <div class="data-label">Total Distance</div>
             <div class="data-value">
-              <span id="ftms-speed">--</span>
-              <span class="data-unit">km/h</span>
+              <span id="ftms-distance">--</span>
+              <span class="data-unit">m</span>
+            </div>
+          </div>
+          <div class="data-card">
+            <div class="data-label">Total Energy</div>
+            <div class="data-value">
+              <span id="ftms-calories">--</span>
+              <span class="data-unit">kcal</span>
+            </div>
+          </div>
+          <div class="data-card">
+            <div class="data-label">Resistance</div>
+            <div class="data-value">
+              <span id="ftms-resistance">--</span>
+              <span class="data-unit"></span>
+            </div>
+          </div>
+          <div class="data-card">
+            <div class="data-label">Elapsed Time</div>
+            <div class="data-value">
+              <span id="ftms-elapsed">--</span>
+              <span class="data-unit"></span>
             </div>
           </div>
         </div>

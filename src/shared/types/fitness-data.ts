@@ -23,13 +23,18 @@ export interface FitnessData {
 /**
  * FTMS Indoor Bike Data output format.
  * This is what we broadcast to receiving apps.
+ * Based on Bluetooth FTMS Indoor Bike Data characteristic (0x2AD2).
  */
 export interface FtmsOutput {
-  speed: number;         // km/h (calculated if not available)
-  cadence: number;       // RPM
-  power: number;         // Watts
-  heartRate?: number;    // BPM (optional)
-  distance?: number;     // meters (cumulative)
-  calories?: number;     // kcal
-  resistance?: number;   // Resistance level
+  // Required fields
+  speed: number;         // km/h (calculated from power if not available)
+  cadence: number;       // RPM (0.5 resolution in FTMS)
+  power: number;         // Watts (signed 16-bit in FTMS)
+
+  // Optional fields
+  heartRate?: number;    // BPM
+  distance?: number;     // meters (cumulative, 24-bit in FTMS)
+  calories?: number;     // kcal (Total Energy)
+  resistance?: number;   // Resistance level (0.1 resolution in FTMS)
+  elapsedTime?: number;  // seconds
 }

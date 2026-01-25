@@ -209,6 +209,15 @@ section {
   color: #4cc9f0;
 }
 
+/* No data placeholder */
+.no-data {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: #666;
+  padding: 30px;
+  font-style: italic;
+}
+
 .data-card {
   background: #1a1a2e;
   border-radius: 12px;
