@@ -202,6 +202,39 @@ function setupIpcListeners(): void {
     deviceList.displayDevices(devices);
     activityLog.log(`Found ${devices.length} device(s). Click one to connect.`);
   });
+
+  // Listen for broadcaster status updates
+  window.electronAPI.onBroadcasterStatus((status) => {
+    statusIndicator.setBroadcasterStatus(status);
+    activityLog.log(`FTMS Broadcast: ${status.state}${status.error ? ` - ${status.error}` : ''}`);
+  });
+
+  // Listen for broadcaster log messages
+  window.electronAPI.onBroadcasterLog((message) => {
+    activityLog.log(`Broadcaster: ${message}`);
+  });
+}
+
+// =============================================================================
+// BROADCAST HANDLING
+// =============================================================================
+
+/**
+ * Handle broadcast button click - toggle broadcasting on/off
+ */
+function handleBroadcastToggle(): void {
+  if (!window.electronAPI) {
+    activityLog.log('ERROR: Electron API not available');
+    return;
+  }
+
+  if (statusIndicator.getIsBroadcasting()) {
+    activityLog.log('Stopping FTMS broadcast...');
+    window.electronAPI.broadcasterStop();
+  } else {
+    activityLog.log('Starting FTMS broadcast...');
+    window.electronAPI.broadcasterStart();
+  }
 }
 
 // =============================================================================
@@ -229,6 +262,7 @@ function init(): void {
   // Set up UI event handlers
   statusIndicator.onScanClick(handleScan);
   statusIndicator.onDisconnectClick(handleDisconnect);
+  statusIndicator.onBroadcastClick(handleBroadcastToggle);
   deviceList.onSelect(handleDeviceSelection);
 
   // Set up fitness reader callbacks

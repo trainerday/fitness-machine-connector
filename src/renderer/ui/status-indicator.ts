@@ -2,15 +2,27 @@
  * Status indicator UI component - shows connection status
  */
 
+export interface BroadcasterStatus {
+  state: 'stopped' | 'starting' | 'advertising' | 'connected' | 'error';
+  deviceName?: string;
+  clientAddress?: string;
+  error?: string;
+}
+
 export class StatusIndicator {
   private deviceStatus: HTMLSpanElement;
+  private ftmsStatus: HTMLSpanElement;
   private scanBtn: HTMLButtonElement;
   private disconnectBtn: HTMLButtonElement;
+  private broadcastBtn: HTMLButtonElement;
+  private isBroadcasting = false;
 
   constructor() {
     this.deviceStatus = this.getElement('device-status') as HTMLSpanElement;
+    this.ftmsStatus = this.getElement('ftms-status') as HTMLSpanElement;
     this.scanBtn = this.getElement('scan-btn') as HTMLButtonElement;
     this.disconnectBtn = this.getElement('disconnect-btn') as HTMLButtonElement;
+    this.broadcastBtn = this.getElement('broadcast-btn') as HTMLButtonElement;
   }
 
   private getElement(id: string): HTMLElement {
@@ -67,5 +79,67 @@ export class StatusIndicator {
 
   onDisconnectClick(handler: () => void): void {
     this.disconnectBtn.addEventListener('click', handler);
+  }
+
+  onBroadcastClick(handler: () => void): void {
+    this.broadcastBtn.addEventListener('click', handler);
+  }
+
+  /**
+   * Update broadcast button and FTMS status based on broadcaster state
+   */
+  setBroadcasterStatus(status: BroadcasterStatus): void {
+    switch (status.state) {
+      case 'stopped':
+        this.ftmsStatus.textContent = 'Inactive';
+        this.ftmsStatus.classList.remove('connected', 'warning');
+        this.ftmsStatus.classList.add('disconnected');
+        this.broadcastBtn.textContent = 'Start Broadcast';
+        this.broadcastBtn.disabled = false;
+        this.isBroadcasting = false;
+        break;
+
+      case 'starting':
+        this.ftmsStatus.textContent = 'Starting...';
+        this.ftmsStatus.classList.remove('connected', 'disconnected');
+        this.ftmsStatus.classList.add('warning');
+        this.broadcastBtn.textContent = 'Starting...';
+        this.broadcastBtn.disabled = true;
+        break;
+
+      case 'advertising':
+        this.ftmsStatus.textContent = 'Broadcasting';
+        this.ftmsStatus.classList.remove('disconnected', 'warning');
+        this.ftmsStatus.classList.add('connected');
+        this.broadcastBtn.textContent = 'Stop Broadcast';
+        this.broadcastBtn.disabled = false;
+        this.isBroadcasting = true;
+        break;
+
+      case 'connected':
+        this.ftmsStatus.textContent = `Connected: ${status.clientAddress || 'Client'}`;
+        this.ftmsStatus.classList.remove('disconnected', 'warning');
+        this.ftmsStatus.classList.add('connected');
+        this.broadcastBtn.textContent = 'Stop Broadcast';
+        this.broadcastBtn.disabled = false;
+        this.isBroadcasting = true;
+        break;
+
+      case 'error':
+        this.ftmsStatus.textContent = `Error: ${status.error || 'Unknown'}`;
+        this.ftmsStatus.classList.remove('connected', 'warning');
+        this.ftmsStatus.classList.add('disconnected');
+        this.broadcastBtn.textContent = 'Start Broadcast';
+        this.broadcastBtn.disabled = false;
+        this.isBroadcasting = false;
+        break;
+    }
+  }
+
+  /**
+   * Check if currently broadcasting
+   */
+  getIsBroadcasting(): boolean {
+    return this.isBroadcasting;
   }
 }

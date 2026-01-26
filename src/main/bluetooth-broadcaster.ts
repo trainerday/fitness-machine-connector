@@ -43,13 +43,19 @@ export class BluetoothBroadcaster extends EventEmitter {
         'ftms_broadcaster.py'
       );
 
-      // Use python3 on Unix, python on Windows
-      const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-
-      return {
-        command: pythonCmd,
-        args: [scriptPath],
-      };
+      // Use python3 on Unix, py launcher on Windows with Python 3.10
+      // (3.10 has pre-built wheels for bleak-winrt, newer versions don't)
+      if (process.platform === 'win32') {
+        return {
+          command: 'py',
+          args: ['-3.10', scriptPath],
+        };
+      } else {
+        return {
+          command: 'python3',
+          args: [scriptPath],
+        };
+      }
     } else {
       // Production: use compiled executable from resources
       const exeName =

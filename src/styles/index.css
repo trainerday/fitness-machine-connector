@@ -83,6 +83,11 @@ section {
   color: #ff6b6b;
 }
 
+.status-value.warning {
+  background: rgba(255, 193, 7, 0.2);
+  color: #ffc107;
+}
+
 /* Buttons */
 .controls {
   display: flex;
@@ -120,6 +125,15 @@ section {
 
 .btn-secondary:hover:not(:disabled) {
   background: #4a4a6c;
+}
+
+.btn-broadcast {
+  background: #7b2cbf;
+  color: #fff;
+}
+
+.btn-broadcast:hover:not(:disabled) {
+  background: #9d4edd;
 }
 
 .btn-small {

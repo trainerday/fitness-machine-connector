@@ -1,2 +1,6 @@
-bless>=0.3.0
+# Requires Python 3.11 on Windows (pre-built wheels available)
+bless>=0.2.5
+bleak>=0.21.0,<0.22.0
+bleak-winrt>=1.2.0 ; sys_platform == 'win32'
 pyinstaller>=6.0.0
+pysetupdi @ git+https://github.com/gwangyi/pysetupdi.git
