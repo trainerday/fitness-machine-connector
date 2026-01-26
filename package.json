@@ -2,7 +2,7 @@
   "name": "trainerday-device-translator-for-windows",
   "productName": "trainerday-device-translator-for-windows",
   "version": "1.0.0",
-  "description": "My Electron application description",
+  "description": "Translates fitness device data to FTMS for apps like Zwift",
   "main": ".vite/build/main.js",
   "private": true,
   "scripts": {
@@ -10,7 +10,12 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx ."
+    "lint": "eslint --ext .ts,.tsx .",
+    "python:setup": "cd python && pip install -r requirements.txt",
+    "python:build:win": "cd python && pyinstaller --onefile --name ftms-broadcaster-win ftms_broadcaster.py && mv dist/ftms-broadcaster-win.exe ../resources/",
+    "python:build:mac": "cd python && pyinstaller --onefile --name ftms-broadcaster-mac ftms_broadcaster.py && mv dist/ftms-broadcaster-mac ../resources/",
+    "python:build": "npm run python:build:win || npm run python:build:mac",
+    "build:all": "npm run python:build && npm run make"
   },
   "keywords": [],
   "author": {
@@ -38,7 +43,6 @@
     "vite": "^5.4.21"
   },
   "dependencies": {
-    "@abandonware/bleno": "^0.6.0",
     "electron-squirrel-startup": "^1.0.1"
   }
 }

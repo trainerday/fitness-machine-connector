@@ -6,6 +6,7 @@ import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { BluetoothDeviceManager } from './bluetooth-device-manager';
+import { BluetoothBroadcaster } from './bluetooth-broadcaster';
 import { setupIpcHandlers } from './ipc-handlers';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -16,8 +17,11 @@ if (started) {
 // Create device manager instance
 const deviceManager = new BluetoothDeviceManager();
 
+// Create broadcaster instance
+const broadcaster = new BluetoothBroadcaster();
+
 // Set up IPC handlers
-setupIpcHandlers(deviceManager);
+setupIpcHandlers(deviceManager, broadcaster);
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -59,6 +63,11 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+// Clean up broadcaster on quit
+app.on('before-quit', () => {
+  broadcaster.stop();
 });
 
 app.on('activate', () => {

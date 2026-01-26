@@ -2,10 +2,15 @@
  * IPC event handlers for main process communication with renderer
  */
 
-import { ipcMain } from 'electron';
+import { ipcMain, BrowserWindow } from 'electron';
 import { BluetoothDeviceManager } from './bluetooth-device-manager';
+import { BluetoothBroadcaster, BroadcasterStatus } from './bluetooth-broadcaster';
+import { FtmsOutput } from '../shared/types/fitness-data';
 
-export function setupIpcHandlers(deviceManager: BluetoothDeviceManager): void {
+export function setupIpcHandlers(
+  deviceManager: BluetoothDeviceManager,
+  broadcaster: BluetoothBroadcaster
+): void {
   // Handle device selection from renderer
   ipcMain.on('select-bluetooth-device', (_event, deviceId: string) => {
     deviceManager.selectDevice(deviceId);
@@ -19,5 +24,37 @@ export function setupIpcHandlers(deviceManager: BluetoothDeviceManager): void {
   // Handle new scan request from renderer
   ipcMain.on('start-bluetooth-scan', () => {
     deviceManager.startNewScan();
+  });
+
+  // Broadcaster controls
+  ipcMain.on('broadcaster-start', () => {
+    broadcaster.start();
+  });
+
+  ipcMain.on('broadcaster-stop', () => {
+    broadcaster.stop();
+  });
+
+  ipcMain.on('broadcaster-send-data', (_event, data: FtmsOutput) => {
+    broadcaster.sendData(data);
+  });
+
+  ipcMain.handle('broadcaster-get-status', (): BroadcasterStatus => {
+    return broadcaster.getStatus();
+  });
+
+  // Forward broadcaster status changes to renderer
+  broadcaster.on('status', (status: BroadcasterStatus) => {
+    const windows = BrowserWindow.getAllWindows();
+    windows.forEach((win) => {
+      win.webContents.send('broadcaster-status', status);
+    });
+  });
+
+  broadcaster.on('log', (message: string) => {
+    const windows = BrowserWindow.getAllWindows();
+    windows.forEach((win) => {
+      win.webContents.send('broadcaster-log', message);
+    });
   });
 }

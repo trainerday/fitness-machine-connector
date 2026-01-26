@@ -10,6 +10,12 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    extraResource: [
+      // Python FTMS broadcaster executables (built separately)
+      // These will be in process.resourcesPath at runtime
+      ...(process.platform === 'win32' ? ['./resources/ftms-broadcaster-win.exe'] : []),
+      ...(process.platform === 'darwin' ? ['./resources/ftms-broadcaster-mac'] : []),
+    ].filter(Boolean),
   },
   rebuildConfig: {},
   makers: [
