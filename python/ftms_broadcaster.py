@@ -220,7 +220,7 @@ class FtmsBroadcaster:
             FTMS_SERVICE_UUID,
             INDOOR_BIKE_DATA_UUID,
             GATTCharacteristicProperties.notify,
-            bytearray(self.build_indoor_bike_data()),
+            None,
             GATTAttributePermissions.readable,
         )
 
