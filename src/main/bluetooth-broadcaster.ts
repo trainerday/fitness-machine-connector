@@ -44,11 +44,11 @@ export class BluetoothBroadcaster extends EventEmitter {
       );
 
       // Use python3 on Unix, py launcher on Windows with Python 3.10
-      // (3.10 has pre-built wheels for bleak-winrt, newer versions don't)
+      // (3.11 has pre-built wheels for bleak-winrt, newer versions don't)
       if (process.platform === 'win32') {
         return {
           command: 'py',
-          args: ['-3.10', scriptPath],
+          args: ['-3.11', scriptPath],
         };
       } else {
         return {
