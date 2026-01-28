@@ -26,12 +26,6 @@ from winrt.windows.devices.bluetooth.genericattributeprofile import (
     GattLocalCharacteristicResult,
     GattServiceProviderResult,
 )
-from winrt.windows.devices.bluetooth.advertisement import (
-    BluetoothLEAdvertisementPublisher,
-    BluetoothLEAdvertisement,
-    BluetoothLEAdvertisementDataSection,
-    BluetoothLEAdvertisementPublisherStatus,
-)
 from winrt.windows.storage.streams import DataWriter, Buffer
 
 # FTMS UUIDs
@@ -48,7 +42,6 @@ class FtmsBroadcasterWinRT:
 
     def __init__(self):
         self.service_provider: Optional[GattServiceProvider] = None
-        self.adv_publisher: Optional[BluetoothLEAdvertisementPublisher] = None
         self.bike_data_characteristic = None
         self.running = False
         self.subscribers = []
@@ -199,28 +192,20 @@ class FtmsBroadcasterWinRT:
     async def start_advertising(self) -> bool:
         """Start BLE advertising."""
         try:
-            # Start GATT service advertising
+            # Use GattServiceProvider's built-in advertising
+            # Note: Device name will be the Windows Bluetooth name, not custom
             try:
                 adv_params = GattServiceProviderAdvertisingParameters()
                 adv_params.is_discoverable = True
                 adv_params.is_connectable = True
                 self.service_provider.start_advertising(adv_params)
+                self.log("GATT service advertising started (with params)")
             except TypeError:
                 self.service_provider.start_advertising()
+                self.log("GATT service advertising started (no params)")
 
-            # Also start a separate advertisement publisher with device name
-            self.adv_publisher = BluetoothLEAdvertisementPublisher()
-            advertisement = self.adv_publisher.advertisement
-
-            # Add local name to advertisement
-            advertisement.local_name = DEVICE_NAME
-
-            # Add FTMS service UUID to advertisement
-            advertisement.service_uuids.append(FTMS_SERVICE_UUID)
-
-            self.adv_publisher.start()
-            self.log(f"Advertisement publisher started with name: {DEVICE_NAME}")
-
+            self.log(f"Device should be visible as your PC's Bluetooth name")
+            self.log(f"Service UUID: {FTMS_SERVICE_UUID}")
             self.send_status("advertising", device_name=DEVICE_NAME)
             return True
 
@@ -258,12 +243,6 @@ class FtmsBroadcasterWinRT:
     async def stop(self) -> None:
         """Stop the broadcaster."""
         self.running = False
-
-        if self.adv_publisher:
-            try:
-                self.adv_publisher.stop()
-            except Exception:
-                pass
 
         if self.service_provider:
             try:
