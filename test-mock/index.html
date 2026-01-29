@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>FTMS Mock Test</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>FTMS Mock Test</h1>
+        <p class="subtitle">Testing FTMS broadcast with simulated data</p>
+      </header>
+
+      <section class="connection-section">
+        <div class="status-bar">
+          <div class="status-item">
+            <span class="status-label">Mock Data:</span>
+            <span id="mock-status" class="status-value disconnected">Stopped</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">FTMS Broadcast:</span>
+            <span id="ftms-status" class="status-value disconnected">Inactive</span>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button id="mock-btn" class="btn btn-primary">Start Mock Data</button>
+          <button id="broadcast-btn" class="btn btn-broadcast">Start Broadcast</button>
+        </div>
+      </section>
+
+      <section class="data-section">
+        <h2>Live Data <span class="source-badge">MOCK</span></h2>
+        <div class="data-grid">
+          <div class="data-card">
+            <div class="data-label">Power</div>
+            <div class="data-value">
+              <span id="live-power">--</span>
+              <span class="data-unit">W</span>
+            </div>
+          </div>
+          <div class="data-card">
+            <div class="data-label">Cadence</div>
+            <div class="data-value">
+              <span id="live-cadence">--</span>
+              <span class="data-unit">RPM</span>
+            </div>
+          </div>
+          <div class="data-card">
+            <div class="data-label">Heart Rate</div>
+            <div class="data-value">
+              <span id="live-hr">--</span>
+              <span class="data-unit">BPM</span>
+            </div>
+          </div>
+          <div class="data-card">
+            <div class="data-label">Speed</div>
+            <div class="data-value">
+              <span id="live-speed">--</span>
+              <span class="data-unit">km/h</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="data-section ftms-section">
+        <h2>FTMS Output</h2>
+        <div class="data-grid ftms-core-grid">
+          <div class="data-card">
+            <div class="data-label">Power</div>
+            <div class="data-value">
+              <span id="ftms-power">--</span>
+              <span class="data-unit">W</span>
+            </div>
+          </div>
+          <div class="data-card">
+            <div class="data-label">Cadence</div>
+            <div class="data-value">
+              <span id="ftms-cadence">--</span>
+              <span class="data-unit">RPM</span>
+            </div>
+          </div>
+          <div class="data-card">
+            <div class="data-label">Heart Rate</div>
+            <div class="data-value">
+              <span id="ftms-hr">--</span>
+              <span class="data-unit">BPM</span>
+            </div>
+          </div>
+        </div>
+        <div class="expandable-section">
+          <button id="toggle-additional" class="expand-btn">
+            <span class="expand-icon">&#9654;</span> Show additional fields
+          </button>
+          <div id="additional-fields" class="additional-fields" style="display: none;">
+            <div class="data-grid ftms-additional-grid">
+              <div class="data-card data-card-small">
+                <div class="data-label">Distance</div>
+                <div class="data-value">
+                  <span id="ftms-distance">--</span>
+                  <span class="data-unit">m</span>
+                </div>
+              </div>
+              <div class="data-card data-card-small">
+                <div class="data-label">Calories</div>
+                <div class="data-value">
+                  <span id="ftms-calories">--</span>
+                  <span class="data-unit">kcal</span>
+                </div>
+              </div>
+              <div class="data-card data-card-small">
+                <div class="data-label">Elapsed Time</div>
+                <div class="data-value">
+                  <span id="ftms-elapsed">--</span>
+                  <span class="data-unit"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="log-section">
+        <h2>Activity Log</h2>
+        <div id="log" class="log-container">
+          <div class="log-entry">Mock test app started. Click "Start Mock Data" then "Start Broadcast" to test.</div>
+        </div>
+      </section>
+    </div>
+    <script src="renderer.js"></script>
+  </body>
+</html>

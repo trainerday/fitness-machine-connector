@@ -1,0 +1,9 @@
+{
+  "name": "ftms-mock-test",
+  "version": "1.0.0",
+  "description": "Standalone mock test for FTMS broadcasting",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  }
+}

@@ -31,7 +31,8 @@ FTMS_CONTROL_POINT_UUID = "00002ad9-0000-1000-8000-00805f9b34fb"
 SUPPORTED_RESISTANCE_RANGE_UUID = "00002ad6-0000-1000-8000-00805f9b34fb"
 SUPPORTED_POWER_RANGE_UUID = "00002ad8-0000-1000-8000-00805f9b34fb"
 
-DEVICE_NAME = "TD FTMS Bike"
+# Device name - keep short (<=10 chars) to ensure service UUIDs fit in advertisement
+DEVICE_NAME = "TD Bike"
 
 
 class FtmsBroadcaster:
@@ -248,7 +249,13 @@ class FtmsBroadcaster:
         """Start advertising and notification loop."""
         await self.setup_server()
 
-        await self.server.start()
+        # Start with explicit service UUID advertisement
+        # prioritize_local_name=False ensures service UUIDs are included even if name is long
+        await self.server.start(
+            advertisement_data={
+                "service_uuids": [FTMS_SERVICE_UUID],
+            }
+        )
         self.running = True
         self.send_status("advertising", device_name=DEVICE_NAME)
 
