@@ -28,8 +28,29 @@ FTMS_SERVICE_UUID = "00001826-0000-1000-8000-00805f9b34fb"
 INDOOR_BIKE_DATA_UUID = "00002ad2-0000-1000-8000-00805f9b34fb"
 FITNESS_MACHINE_FEATURE_UUID = "00002acc-0000-1000-8000-00805f9b34fb"
 FTMS_CONTROL_POINT_UUID = "00002ad9-0000-1000-8000-00805f9b34fb"
+FTMS_STATUS_UUID = "00002ada-0000-1000-8000-00805f9b34fb"
 SUPPORTED_RESISTANCE_RANGE_UUID = "00002ad6-0000-1000-8000-00805f9b34fb"
 SUPPORTED_POWER_RANGE_UUID = "00002ad8-0000-1000-8000-00805f9b34fb"
+
+# FTMS Control Point Op Codes
+FTMS_OP_REQUEST_CONTROL = 0x00
+FTMS_OP_RESET = 0x01
+FTMS_OP_SET_TARGET_SPEED = 0x02
+FTMS_OP_SET_TARGET_INCLINE = 0x03
+FTMS_OP_SET_TARGET_RESISTANCE = 0x04
+FTMS_OP_SET_TARGET_POWER = 0x05
+FTMS_OP_SET_TARGET_HR = 0x06
+FTMS_OP_START_RESUME = 0x07
+FTMS_OP_STOP_PAUSE = 0x08
+FTMS_OP_SET_SIMULATION = 0x11
+FTMS_OP_RESPONSE = 0x80
+
+# FTMS Result Codes
+FTMS_RESULT_SUCCESS = 0x01
+FTMS_RESULT_NOT_SUPPORTED = 0x02
+FTMS_RESULT_INVALID_PARAM = 0x03
+FTMS_RESULT_FAILED = 0x04
+FTMS_RESULT_CONTROL_NOT_PERMITTED = 0x05
 
 # Device name - keep short (<=10 chars) to ensure service UUIDs fit in advertisement
 DEVICE_NAME = "TD Bike"
@@ -42,6 +63,8 @@ class FtmsBroadcaster:
         self.server: Optional[BlessServer] = None
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.running = False
+        self.control_granted = False  # Track if client has control
+        self.has_subscribers = False  # Track if any client is subscribed
         self.current_data: Dict[str, Any] = {
             "power": 0,
             "cadence": 0,
@@ -51,6 +74,17 @@ class FtmsBroadcaster:
             "elapsedTime": 0,
         }
         self.notify_task: Optional[asyncio.Task] = None
+
+    def on_subscribe(self, characteristic, client_address):
+        """Called when a client subscribes to notifications."""
+        self.log(f"Client {client_address} subscribed to {characteristic}")
+        self.has_subscribers = True
+        self.send_status("connected", client=str(client_address))
+
+    def on_unsubscribe(self, characteristic, client_address):
+        """Called when a client unsubscribes from notifications."""
+        self.log(f"Client {client_address} unsubscribed from {characteristic}")
+        # Don't set has_subscribers to False as other clients may still be subscribed
 
     def log(self, message: str) -> None:
         """Send log message to stdout as JSON."""
@@ -173,8 +207,54 @@ class FtmsBroadcaster:
         uuid = str(characteristic.uuid).lower()
 
         if FTMS_CONTROL_POINT_UUID in uuid:
-            # Log control point commands but don't act on them
             self.log(f"Control point write: {value.hex() if value else 'empty'}")
+
+            if value and len(value) > 0:
+                op_code = value[0]
+                self.handle_control_point(op_code, value)
+
+    def handle_control_point(self, op_code: int, value: bytes) -> None:
+        """Handle FTMS Control Point commands and send response."""
+        result = FTMS_RESULT_SUCCESS
+
+        if op_code == FTMS_OP_REQUEST_CONTROL:
+            self.control_granted = True
+            self.log("Control granted to client")
+        elif op_code == FTMS_OP_RESET:
+            self.log("Reset requested")
+        elif op_code == FTMS_OP_START_RESUME:
+            self.log("Start/Resume requested")
+        elif op_code == FTMS_OP_STOP_PAUSE:
+            param = value[1] if len(value) > 1 else 1
+            self.log(f"Stop/Pause requested (param={param})")
+        elif op_code == FTMS_OP_SET_TARGET_POWER:
+            if len(value) >= 3:
+                target_power = struct.unpack('<h', value[1:3])[0]
+                self.log(f"Target power set: {target_power}W")
+        elif op_code == FTMS_OP_SET_TARGET_RESISTANCE:
+            if len(value) >= 2:
+                target_resistance = value[1]
+                self.log(f"Target resistance set: {target_resistance}")
+        elif op_code == FTMS_OP_SET_SIMULATION:
+            self.log("Simulation parameters received")
+        else:
+            self.log(f"Unknown op code: {op_code}")
+            result = FTMS_RESULT_NOT_SUPPORTED
+
+        # Send response indication
+        self.send_control_point_response(op_code, result)
+
+    def send_control_point_response(self, request_op_code: int, result: int) -> None:
+        """Send Control Point response indication."""
+        if self.server:
+            # Response format: [0x80, request_op_code, result_code]
+            response = struct.pack('<BBB', FTMS_OP_RESPONSE, request_op_code, result)
+
+            char = self.server.get_characteristic(FTMS_CONTROL_POINT_UUID)
+            if char:
+                char.value = bytearray(response)
+                self.server.update_value(FTMS_SERVICE_UUID, FTMS_CONTROL_POINT_UUID)
+                self.log(f"Sent control response: op={request_op_code}, result={result}")
 
     async def notify_loop(self) -> None:
         """Continuously notify subscribers with current data."""
@@ -203,6 +283,12 @@ class FtmsBroadcaster:
         self.server = BlessServer(name=DEVICE_NAME, loop=self.loop)
         self.server.read_request_func = self.read_request
         self.server.write_request_func = self.write_request
+
+        # Set up subscription callbacks if available
+        if hasattr(self.server, 'subscribe_callback'):
+            self.server.subscribe_callback = self.on_subscribe
+        if hasattr(self.server, 'unsubscribe_callback'):
+            self.server.unsubscribe_callback = self.on_unsubscribe
 
         # Add FTMS service
         await self.server.add_new_service(FTMS_SERVICE_UUID)
@@ -243,11 +329,24 @@ class FtmsBroadcaster:
             GATTAttributePermissions.readable | GATTAttributePermissions.writeable,
         )
 
+        # Fitness Machine Status (notify) - required for apps to know device state
+        await self.server.add_new_characteristic(
+            FTMS_SERVICE_UUID,
+            FTMS_STATUS_UUID,
+            GATTCharacteristicProperties.notify,
+            None,
+            GATTAttributePermissions.readable,
+        )
+
         self.log("GATT server configured")
 
     async def start(self) -> None:
         """Start advertising and notification loop."""
         await self.setup_server()
+
+        # Log the services and characteristics we're offering
+        self.log(f"Service: {FTMS_SERVICE_UUID}")
+        self.log(f"Characteristics: Feature={FITNESS_MACHINE_FEATURE_UUID}, BikeData={INDOOR_BIKE_DATA_UUID}, ControlPoint={FTMS_CONTROL_POINT_UUID}, Status={FTMS_STATUS_UUID}")
 
         # Start with explicit service UUID advertisement
         # prioritize_local_name=False ensures service UUIDs are included even if name is long
@@ -258,6 +357,7 @@ class FtmsBroadcaster:
         )
         self.running = True
         self.send_status("advertising", device_name=DEVICE_NAME)
+        self.log("Server started, waiting for connections...")
 
         # Start notification loop
         self.notify_task = asyncio.create_task(self.notify_loop())
