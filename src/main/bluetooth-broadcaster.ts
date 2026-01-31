@@ -1,7 +1,11 @@
 /**
  * Bluetooth FTMS Broadcaster
- * Manages the Python bless-based FTMS broadcaster subprocess.
- * Sends fitness data to the Python process which broadcasts it via BLE.
+ *
+ * Hybrid implementation that uses the best backend for each platform:
+ * - macOS/Linux: Uses @abandonware/bleno for native BLE peripheral support
+ * - Windows: Uses Python bless library via subprocess
+ *
+ * This approach ensures optimal stability on each platform.
  */
 
 import { spawn, ChildProcess } from 'child_process';
@@ -9,6 +13,7 @@ import path from 'path';
 import { app } from 'electron';
 import { EventEmitter } from 'events';
 import { FtmsOutput } from '../shared/types/fitness-data';
+import { BlenoBroadcaster } from './bleno-broadcaster';
 
 export interface BroadcasterStatus {
   state: 'stopped' | 'starting' | 'advertising' | 'connected' | 'error';
@@ -17,7 +22,18 @@ export interface BroadcasterStatus {
   error?: string;
 }
 
-export class BluetoothBroadcaster extends EventEmitter {
+/**
+ * Determine which backend to use based on platform
+ */
+function shouldUseBleno(): boolean {
+  // Use bleno on macOS and Linux, Python on Windows
+  return process.platform === 'darwin' || process.platform === 'linux';
+}
+
+/**
+ * Python-based broadcaster for Windows
+ */
+class PythonBroadcaster extends EventEmitter {
   private process: ChildProcess | null = null;
   private status: BroadcasterStatus = { state: 'stopped' };
   private restartAttempts = 0;
@@ -27,24 +43,12 @@ export class BluetoothBroadcaster extends EventEmitter {
     super();
   }
 
-  /**
-   * Get the path to the Python broadcaster executable.
-   * In development, runs the Python script directly.
-   * In production, uses the compiled executable.
-   */
   private getExecutablePath(): { command: string; args: string[] } {
     const isDev = !app.isPackaged;
 
     if (isDev) {
-      // Development: run Python script directly
-      const scriptPath = path.join(
-        app.getAppPath(),
-        'python',
-        'ftms_broadcaster.py'
-      );
+      const scriptPath = path.join(app.getAppPath(), 'python', 'ftms_broadcaster.py');
 
-      // Use python3 on Unix, py launcher on Windows with Python 3.10
-      // (3.11 has pre-built wheels for bleak-winrt, newer versions don't)
       if (process.platform === 'win32') {
         return {
           command: 'py',
@@ -57,7 +61,6 @@ export class BluetoothBroadcaster extends EventEmitter {
         };
       }
     } else {
-      // Production: use compiled executable from resources
       const exeName =
         process.platform === 'win32'
           ? 'ftms-broadcaster-win.exe'
@@ -72,9 +75,6 @@ export class BluetoothBroadcaster extends EventEmitter {
     }
   }
 
-  /**
-   * Start the FTMS broadcaster.
-   */
   start(): void {
     if (this.process) {
       console.log('Broadcaster already running');
@@ -86,15 +86,14 @@ export class BluetoothBroadcaster extends EventEmitter {
 
     const { command, args } = this.getExecutablePath();
 
-    console.log(`Starting broadcaster: ${command} ${args.join(' ')}`);
+    console.log(`Starting Python broadcaster: ${command} ${args.join(' ')}`);
 
     try {
       this.process = spawn(command, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
-        // Ensure proper environment
         env: {
           ...process.env,
-          PYTHONUNBUFFERED: '1', // Disable Python output buffering
+          PYTHONUNBUFFERED: '1',
         },
       });
 
@@ -127,11 +126,7 @@ export class BluetoothBroadcaster extends EventEmitter {
     }
   }
 
-  /**
-   * Handle output from the Python process (JSON messages).
-   */
   private handleOutput(output: string): void {
-    // Split by newlines in case multiple messages arrive together
     const lines = output.trim().split('\n');
 
     for (const line of lines) {
@@ -169,20 +164,15 @@ export class BluetoothBroadcaster extends EventEmitter {
           this.emit('status', this.status);
         }
       } catch {
-        // Not JSON, just log it
         console.log('Broadcaster output:', line);
       }
     }
   }
 
-  /**
-   * Handle process exit - attempt restart if unexpected.
-   */
   private handleProcessExit(): void {
     this.process = null;
 
     if (this.status.state !== 'stopped' && this.status.state !== 'error') {
-      // Unexpected exit, try to restart
       if (this.restartAttempts < this.maxRestartAttempts) {
         this.restartAttempts++;
         console.log(
@@ -199,9 +189,6 @@ export class BluetoothBroadcaster extends EventEmitter {
     }
   }
 
-  /**
-   * Send fitness data to the broadcaster.
-   */
   sendData(data: FtmsOutput): void {
     if (!this.process || !this.process.stdin) {
       return;
@@ -215,9 +202,6 @@ export class BluetoothBroadcaster extends EventEmitter {
     }
   }
 
-  /**
-   * Stop the broadcaster gracefully.
-   */
   stop(): void {
     if (!this.process) {
       return;
@@ -227,10 +211,8 @@ export class BluetoothBroadcaster extends EventEmitter {
     this.status = { state: 'stopped' };
 
     try {
-      // Send stop command
       this.process.stdin?.write(JSON.stringify({ command: 'stop' }) + '\n');
 
-      // Give it time to shut down gracefully
       setTimeout(() => {
         if (this.process) {
           this.process.kill();
@@ -246,17 +228,86 @@ export class BluetoothBroadcaster extends EventEmitter {
     this.emit('status', this.status);
   }
 
+  getStatus(): BroadcasterStatus {
+    return this.status;
+  }
+
+  isRunning(): boolean {
+    return this.process !== null && this.status.state !== 'stopped';
+  }
+}
+
+/**
+ * Main BluetoothBroadcaster class
+ * Automatically selects the best backend based on platform
+ */
+export class BluetoothBroadcaster extends EventEmitter {
+  private backend: BlenoBroadcaster | PythonBroadcaster;
+  private backendType: 'bleno' | 'python';
+
+  constructor() {
+    super();
+
+    // Choose backend based on platform
+    if (shouldUseBleno() && BlenoBroadcaster.isAvailable()) {
+      console.log('Using Bleno backend for BLE broadcasting (macOS/Linux)');
+      this.backend = new BlenoBroadcaster();
+      this.backendType = 'bleno';
+    } else {
+      console.log('Using Python backend for BLE broadcasting (Windows or fallback)');
+      this.backend = new PythonBroadcaster();
+      this.backendType = 'python';
+    }
+
+    // Forward events from backend
+    this.backend.on('status', (status: BroadcasterStatus) => {
+      this.emit('status', status);
+    });
+
+    this.backend.on('log', (message: string) => {
+      this.emit('log', message);
+    });
+  }
+
+  /**
+   * Start the FTMS broadcaster.
+   */
+  start(): void {
+    this.backend.start();
+  }
+
+  /**
+   * Send fitness data to the broadcaster.
+   */
+  sendData(data: FtmsOutput): void {
+    this.backend.sendData(data);
+  }
+
+  /**
+   * Stop the broadcaster gracefully.
+   */
+  stop(): void {
+    this.backend.stop();
+  }
+
   /**
    * Get current broadcaster status.
    */
   getStatus(): BroadcasterStatus {
-    return this.status;
+    return this.backend.getStatus();
   }
 
   /**
    * Check if broadcaster is running.
    */
   isRunning(): boolean {
-    return this.process !== null && this.status.state !== 'stopped';
+    return this.backend.isRunning();
+  }
+
+  /**
+   * Get the backend type being used
+   */
+  getBackendType(): 'bleno' | 'python' {
+    return this.backendType;
   }
 }
