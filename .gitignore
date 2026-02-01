@@ -120,3 +120,8 @@ pip-log.txt
 pip-delete-this-directory.txt
 .mypy_cache/
 .pytest_cache/
+
+# C# / .NET
+FTMSBluetoothForwarder/bin/
+FTMSBluetoothForwarder/obj/
+*.user

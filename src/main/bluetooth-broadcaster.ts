@@ -3,7 +3,7 @@
  *
  * Hybrid implementation that uses the best backend for each platform:
  * - macOS/Linux: Uses @abandonware/bleno for native BLE peripheral support
- * - Windows: Uses Python bless library via subprocess
+ * - Windows: Uses C# .NET FTMS broadcaster via subprocess
  *
  * This approach ensures optimal stability on each platform.
  */
@@ -31,9 +31,10 @@ function shouldUseBleno(): boolean {
 }
 
 /**
- * Python-based broadcaster for Windows
+ * C# .NET based broadcaster for Windows
+ * Uses the FTMSBluetoothForwarder console app which communicates via stdin/stdout JSON
  */
-class PythonBroadcaster extends EventEmitter {
+class WindowsBroadcaster extends EventEmitter {
   private process: ChildProcess | null = null;
   private status: BroadcasterStatus = { state: 'stopped' };
   private restartAttempts = 0;
@@ -47,26 +48,16 @@ class PythonBroadcaster extends EventEmitter {
     const isDev = !app.isPackaged;
 
     if (isDev) {
-      const scriptPath = path.join(app.getAppPath(), 'python', 'ftms_broadcaster.py');
+      // Dev mode: run dotnet from the FTMSBluetoothForwarder project
+      const projectPath = path.join(app.getAppPath(), 'FTMSBluetoothForwarder', 'FTMSBluetoothForwarder.csproj');
 
-      if (process.platform === 'win32') {
-        return {
-          command: 'py',
-          args: ['-3.11', scriptPath],
-        };
-      } else {
-        return {
-          command: 'python3',
-          args: [scriptPath],
-        };
-      }
+      return {
+        command: 'dotnet',
+        args: ['run', '--project', projectPath, '-c', 'Release'],
+      };
     } else {
-      const exeName =
-        process.platform === 'win32'
-          ? 'ftms-broadcaster-win.exe'
-          : 'ftms-broadcaster-mac';
-
-      const exePath = path.join(process.resourcesPath, exeName);
+      // Production: use pre-compiled exe bundled with the app
+      const exePath = path.join(process.resourcesPath, 'FTMSBluetoothForwarder.exe');
 
       return {
         command: exePath,
@@ -86,15 +77,11 @@ class PythonBroadcaster extends EventEmitter {
 
     const { command, args } = this.getExecutablePath();
 
-    console.log(`Starting Python broadcaster: ${command} ${args.join(' ')}`);
+    console.log(`Starting Windows FTMS broadcaster: ${command} ${args.join(' ')}`);
 
     try {
       this.process = spawn(command, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: {
-          ...process.env,
-          PYTHONUNBUFFERED: '1',
-        },
       });
 
       this.process.stdout?.on('data', (data: Buffer) => {
@@ -242,8 +229,8 @@ class PythonBroadcaster extends EventEmitter {
  * Automatically selects the best backend based on platform
  */
 export class BluetoothBroadcaster extends EventEmitter {
-  private backend: BlenoBroadcaster | PythonBroadcaster;
-  private backendType: 'bleno' | 'python';
+  private backend: BlenoBroadcaster | WindowsBroadcaster;
+  private backendType: 'bleno' | 'windows';
 
   constructor() {
     super();
@@ -254,9 +241,9 @@ export class BluetoothBroadcaster extends EventEmitter {
       this.backend = new BlenoBroadcaster();
       this.backendType = 'bleno';
     } else {
-      console.log('Using Python backend for BLE broadcasting (Windows or fallback)');
-      this.backend = new PythonBroadcaster();
-      this.backendType = 'python';
+      console.log('Using Windows .NET backend for BLE broadcasting');
+      this.backend = new WindowsBroadcaster();
+      this.backendType = 'windows';
     }
 
     // Forward events from backend
@@ -307,7 +294,7 @@ export class BluetoothBroadcaster extends EventEmitter {
   /**
    * Get the backend type being used
    */
-  getBackendType(): 'bleno' | 'python' {
+  getBackendType(): 'bleno' | 'windows' {
     return this.backendType;
   }
 }
