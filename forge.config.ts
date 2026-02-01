@@ -11,10 +11,9 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     extraResource: [
-      // Python FTMS broadcaster executables (built separately)
-      // These will be in process.resourcesPath at runtime
-      ...(process.platform === 'win32' ? ['./resources/ftms-broadcaster-win.exe'] : []),
-      ...(process.platform === 'darwin' ? ['./resources/ftms-broadcaster-mac'] : []),
+      // C# FTMS broadcaster executable (built with: npm run ftms:build)
+      // Will be available at process.resourcesPath at runtime
+      ...(process.platform === 'win32' ? ['./resources/FTMSBluetoothForwarder.exe'] : []),
     ].filter(Boolean),
   },
   rebuildConfig: {},
