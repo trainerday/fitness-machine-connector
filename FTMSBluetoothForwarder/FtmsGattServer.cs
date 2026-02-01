@@ -22,6 +22,10 @@ namespace FTMSBluetoothForwarder
         public static readonly Guid SupportedPowerRangeUuid = Guid.Parse("00002ad8-0000-1000-8000-00805f9b34fb");
         public static readonly Guid SupportedResistanceRangeUuid = Guid.Parse("00002ad6-0000-1000-8000-00805f9b34fb");
 
+        // Heart Rate Service UUIDs (separate service - many apps require this for HR)
+        public static readonly Guid HeartRateServiceUuid = Guid.Parse("0000180d-0000-1000-8000-00805f9b34fb");
+        public static readonly Guid HeartRateMeasurementUuid = Guid.Parse("00002a37-0000-1000-8000-00805f9b34fb");
+
         // FTMS Control Point Op Codes
         private const byte OpRequestControl = 0x00;
         private const byte OpReset = 0x01;
@@ -36,10 +40,12 @@ namespace FTMSBluetoothForwarder
         private const byte ResultNotSupported = 0x02;
 
         private GattServiceProvider? _serviceProvider;
+        private GattServiceProvider? _heartRateServiceProvider;
         private BluetoothLEAdvertisementPublisher? _advertiser;
         private GattLocalCharacteristic? _indoorBikeDataChar;
         private GattLocalCharacteristic? _controlPointChar;
         private GattLocalCharacteristic? _statusChar;
+        private GattLocalCharacteristic? _heartRateMeasurementChar;
 
         private FitnessData _currentData = new();
         private bool _controlGranted;
@@ -90,13 +96,16 @@ namespace FTMSBluetoothForwarder
 
                 _serviceProvider = serviceResult.ServiceProvider;
 
-                // Create all characteristics
+                // Create all FTMS characteristics
                 await CreateFitnessMachineFeatureCharacteristic();
                 await CreateIndoorBikeDataCharacteristic();
                 await CreateSupportedPowerRangeCharacteristic();
                 await CreateSupportedResistanceRangeCharacteristic();
                 await CreateControlPointCharacteristic();
                 await CreateStatusCharacteristic();
+
+                // Create Heart Rate Service (separate service for maximum compatibility)
+                await CreateHeartRateService();
 
                 // Start GATT service advertising
                 var advParameters = new GattServiceProviderAdvertisingParameters
@@ -141,7 +150,7 @@ namespace FTMSBluetoothForwarder
                 }
             }
 
-            // Stop GATT service
+            // Stop FTMS GATT service
             if (_serviceProvider != null)
             {
                 try
@@ -149,13 +158,28 @@ namespace FTMSBluetoothForwarder
                     _serviceProvider.StopAdvertising();
                     _serviceProvider.AdvertisementStatusChanged -= OnAdvertisementStatusChanged;
                     _serviceProvider = null;
-                    SendStatus("stopped");
                 }
                 catch (Exception ex)
                 {
-                    Log($"Error stopping: {ex.Message}");
+                    Log($"Error stopping FTMS service: {ex.Message}");
                 }
             }
+
+            // Stop Heart Rate GATT service
+            if (_heartRateServiceProvider != null)
+            {
+                try
+                {
+                    _heartRateServiceProvider.StopAdvertising();
+                    _heartRateServiceProvider = null;
+                }
+                catch (Exception ex)
+                {
+                    Log($"Error stopping Heart Rate service: {ex.Message}");
+                }
+            }
+
+            SendStatus("stopped");
         }
 
         private void StartExplicitAdvertisement()
@@ -167,16 +191,16 @@ namespace FTMSBluetoothForwarder
                 // Set the device name
                 _advertiser.Advertisement.LocalName = DeviceName;
 
-                // Add the FTMS service UUID to the advertisement
-                // Use the 16-bit short form UUID (0x1826) embedded in the base UUID
+                // Add service UUIDs to the advertisement
                 _advertiser.Advertisement.ServiceUuids.Add(FtmsServiceUuid);
+                _advertiser.Advertisement.ServiceUuids.Add(HeartRateServiceUuid);
 
                 _advertiser.StatusChanged += (sender, args) =>
                 {
                     switch (args.Status)
                     {
                         case BluetoothLEAdvertisementPublisherStatus.Started:
-                            Log($"Advertisement started with name '{DeviceName}' and FTMS UUID");
+                            Log($"Advertisement started with name '{DeviceName}', FTMS and Heart Rate services");
                             break;
                         case BluetoothLEAdvertisementPublisherStatus.Aborted:
                             Log($"Advertisement aborted: {args.Error}");
@@ -197,8 +221,6 @@ namespace FTMSBluetoothForwarder
 
         public async Task NotifyAsync()
         {
-            if (_indoorBikeDataChar == null) return;
-
             try
             {
                 FitnessData data;
@@ -207,13 +229,33 @@ namespace FTMSBluetoothForwarder
                     data = _currentData;
                 }
 
-                var bikeData = FtmsDataBuilder.BuildIndoorBikeData(data);
-                var writer = new DataWriter();
-                writer.WriteBytes(bikeData);
-
-                foreach (var client in _indoorBikeDataChar.SubscribedClients)
+                // Notify FTMS Indoor Bike Data
+                if (_indoorBikeDataChar != null && _indoorBikeDataChar.SubscribedClients.Count > 0)
                 {
-                    await _indoorBikeDataChar.NotifyValueAsync(writer.DetachBuffer(), client);
+                    var bikeData = FtmsDataBuilder.BuildIndoorBikeData(data);
+                    var writer = new DataWriter();
+                    writer.WriteBytes(bikeData);
+
+                    foreach (var client in _indoorBikeDataChar.SubscribedClients)
+                    {
+                        await _indoorBikeDataChar.NotifyValueAsync(writer.DetachBuffer(), client);
+                    }
+                }
+
+                // Notify Heart Rate Measurement (separate service)
+                if (_heartRateMeasurementChar != null && _heartRateMeasurementChar.SubscribedClients.Count > 0 && data.HeartRate > 0)
+                {
+                    // Heart Rate Measurement format:
+                    // Byte 0: Flags (0x00 = HR is uint8, no other fields)
+                    // Byte 1: Heart Rate value (uint8)
+                    var hrData = new byte[] { 0x00, (byte)data.HeartRate };
+                    var hrWriter = new DataWriter();
+                    hrWriter.WriteBytes(hrData);
+
+                    foreach (var client in _heartRateMeasurementChar.SubscribedClients)
+                    {
+                        await _heartRateMeasurementChar.NotifyValueAsync(hrWriter.DetachBuffer(), client);
+                    }
                 }
             }
             catch (Exception ex)
@@ -346,6 +388,62 @@ namespace FTMSBluetoothForwarder
             {
                 Log($"Failed to create Status characteristic: {result.Error}");
             }
+        }
+
+        private async Task CreateHeartRateService()
+        {
+            try
+            {
+                // Create a separate Heart Rate Service
+                var serviceResult = await GattServiceProvider.CreateAsync(HeartRateServiceUuid);
+                if (serviceResult.Error != BluetoothError.Success)
+                {
+                    Log($"Failed to create Heart Rate service: {serviceResult.Error}");
+                    return;
+                }
+
+                _heartRateServiceProvider = serviceResult.ServiceProvider;
+
+                // Create Heart Rate Measurement characteristic (Notify only)
+                var parameters = new GattLocalCharacteristicParameters
+                {
+                    CharacteristicProperties = GattCharacteristicProperties.Notify,
+                    ReadProtectionLevel = GattProtectionLevel.Plain
+                };
+
+                var result = await _heartRateServiceProvider.Service.CreateCharacteristicAsync(
+                    HeartRateMeasurementUuid, parameters);
+
+                if (result.Error == BluetoothError.Success)
+                {
+                    _heartRateMeasurementChar = result.Characteristic;
+                    _heartRateMeasurementChar.SubscribedClientsChanged += OnHeartRateSubscribersChanged;
+                    Log("Heart Rate Service created successfully");
+                }
+                else
+                {
+                    Log($"Failed to create Heart Rate Measurement characteristic: {result.Error}");
+                    return;
+                }
+
+                // Start advertising the Heart Rate Service
+                var advParameters = new GattServiceProviderAdvertisingParameters
+                {
+                    IsDiscoverable = true,
+                    IsConnectable = true
+                };
+                _heartRateServiceProvider.StartAdvertising(advParameters);
+            }
+            catch (Exception ex)
+            {
+                Log($"Error creating Heart Rate service: {ex.Message}");
+            }
+        }
+
+        private void OnHeartRateSubscribersChanged(GattLocalCharacteristic sender, object args)
+        {
+            int count = sender.SubscribedClients.Count;
+            Log($"Heart Rate subscribers: {count}");
         }
 
         private void OnIndoorBikeDataSubscribersChanged(GattLocalCharacteristic sender, object args)

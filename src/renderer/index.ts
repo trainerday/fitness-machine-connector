@@ -185,6 +185,10 @@ function setupFitnessReaderCallbacks(): void {
     // Forward data to the broadcaster if it's running
     if (window.electronAPI && statusIndicator.getIsBroadcasting()) {
       const ftmsOutput = convertToFtmsOutput(data);
+      // Debug: log HR being sent
+      if (ftmsOutput.heartRate !== undefined) {
+        console.log(`[DEBUG] Sending HR to broadcaster: ${ftmsOutput.heartRate}`);
+      }
       window.electronAPI.broadcasterSendData(ftmsOutput);
     }
   });

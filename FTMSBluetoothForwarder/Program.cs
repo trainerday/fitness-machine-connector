@@ -21,6 +21,7 @@ var server = new FtmsGattServer();
 var jsonOptions = new JsonSerializerOptions
 {
     PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    PropertyNameCaseInsensitive = true, // Required for deserializing camelCase JSON to PascalCase C# properties
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
 };
 
@@ -55,6 +56,10 @@ Console.CancelKeyPress += (s, e) =>
     e.Cancel = true;
     cts.Cancel();
 };
+
+// Enable FTMS packet debug logging (temporarily for debugging HR issue)
+FtmsDataBuilder.DebugLogging = true;
+FtmsDataBuilder.OnDebugLog = msg => Console.WriteLine(JsonSerializer.Serialize(new { log = msg }, jsonOptions));
 
 // Start the server
 bool started = await server.StartAsync();
@@ -108,7 +113,7 @@ var stdinTask = Task.Run(() =>
                 }
 
                 // Update fitness data
-                server.UpdateData(new FitnessData
+                var fitnessData = new FitnessData
                 {
                     Power = input.Power ?? 0,
                     Cadence = input.Cadence ?? 0,
@@ -116,7 +121,15 @@ var stdinTask = Task.Run(() =>
                     Distance = input.Distance ?? 0,
                     Calories = input.Calories ?? 0,
                     ElapsedTime = input.ElapsedTime ?? 0
-                });
+                };
+
+                // Debug: log received heart rate (remove once verified working)
+                if (input.HeartRate.HasValue && input.HeartRate.Value > 0)
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(new { log = $"Received HR: {input.HeartRate}" }, jsonOptions));
+                }
+
+                server.UpdateData(fitnessData);
             }
             catch (JsonException ex)
             {

@@ -25,6 +25,10 @@ namespace FTMSBluetoothForwarder
         /// - Bit 11: Elapsed Time Present (1 = present)
         /// - Bit 12: Remaining Time Present (0 = not present)
         /// </summary>
+        // Debug flag - set to true to log packet bytes
+        public static bool DebugLogging = false;
+        public static Action<string>? OnDebugLog;
+
         public static byte[] BuildIndoorBikeData(FitnessData data)
         {
             ushort flags = 0;
@@ -73,6 +77,14 @@ namespace FTMSBluetoothForwarder
             result[0] = (byte)(flags & 0xFF);
             result[1] = (byte)((flags >> 8) & 0xFF);
 
+            // Debug: log the packet bytes
+            if (DebugLogging && OnDebugLog != null)
+            {
+                var hex = BitConverter.ToString(result);
+                OnDebugLog($"FTMS Packet ({result.Length} bytes): {hex}");
+                OnDebugLog($"  Flags: 0x{flags:X4}, HR at byte 16: {result[16]}");
+            }
+
             return result;
         }
 
@@ -82,13 +94,14 @@ namespace FTMSBluetoothForwarder
         /// </summary>
         public static byte[] BuildFitnessMachineFeature()
         {
-            // Features we support:
+            // Features we support (per FTMS spec section 4.3.1):
             // Bit 1: Cadence Supported
             // Bit 2: Total Distance Supported
-            // Bit 6: Heart Rate Measurement Supported
-            // Bit 7: Expended Energy Supported
+            // Bit 9: Expended Energy Supported
+            // Bit 10: Heart Rate Measurement Supported
+            // Bit 12: Elapsed Time Supported
             // Bit 14: Power Measurement Supported
-            uint features = (1u << 1) | (1u << 2) | (1u << 6) | (1u << 7) | (1u << 14);
+            uint features = (1u << 1) | (1u << 2) | (1u << 9) | (1u << 10) | (1u << 12) | (1u << 14);
             uint targetSettings = 0; // No target settings
 
             var result = new byte[8];
