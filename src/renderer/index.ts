@@ -24,7 +24,7 @@
 import '../styles/index.css';
 import { ActivityLog, DataDisplay, StatusIndicator, DeviceList } from './ui';
 import { FitnessDataReader } from './services';
-import { BluetoothDeviceInfo } from '../shared/types';
+import { BluetoothDeviceInfo, FitnessData, FtmsOutput } from '../shared/types';
 
 // =============================================================================
 // STATE
@@ -161,12 +161,32 @@ async function handleDisconnect(): Promise<void> {
 // =============================================================================
 
 /**
+ * Convert FitnessData to FtmsOutput format for broadcasting.
+ */
+function convertToFtmsOutput(data: FitnessData): FtmsOutput {
+  return {
+    power: data.power ?? 0,
+    cadence: data.cadence ?? 0,
+    heartRate: data.heartRate,
+    distance: data.distance ? Math.round(data.distance * 1000) : undefined, // Convert km to meters
+    calories: data.calories,
+    elapsedTime: data.duration,
+  };
+}
+
+/**
  * Set up callbacks for fitness data and connection changes.
  */
 function setupFitnessReaderCallbacks(): void {
-  // When fitness data arrives, update the display
+  // When fitness data arrives, update the display and forward to broadcaster
   fitnessReader.onFitnessData((data) => {
     dataDisplay.update(data);
+
+    // Forward data to the broadcaster if it's running
+    if (window.electronAPI && statusIndicator.getIsBroadcasting()) {
+      const ftmsOutput = convertToFtmsOutput(data);
+      window.electronAPI.broadcasterSendData(ftmsOutput);
+    }
   });
 
   // When connection status changes, update the UI
