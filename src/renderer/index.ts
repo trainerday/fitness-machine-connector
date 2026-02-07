@@ -36,6 +36,12 @@ let pendingBluetoothDevice: BluetoothDevice | null = null;
 /** Tracks if we're waiting for scan results (prevents showing list after selection) */
 let awaitingScanResults = false;
 
+/** Latest fitness data, updated on every BLE event but only consumed once per second */
+let latestFitnessData: FitnessData | null = null;
+
+/** Interval handle for the 1-second update loop (display + broadcast) */
+let updateInterval: ReturnType<typeof setInterval> | null = null;
+
 // =============================================================================
 // UI COMPONENTS
 // =============================================================================
@@ -178,26 +184,19 @@ function convertToFtmsOutput(data: FitnessData): FtmsOutput {
  * Set up callbacks for fitness data and connection changes.
  */
 function setupFitnessReaderCallbacks(): void {
-  // When fitness data arrives, update the display and forward to broadcaster
+  // When fitness data arrives, just store the latest values.
+  // The 1-second interval handles both display and broadcasting.
   fitnessReader.onFitnessData((data) => {
-    dataDisplay.update(data);
-
-    // Forward data to the broadcaster if it's running
-    if (window.electronAPI && statusIndicator.getIsBroadcasting()) {
-      const ftmsOutput = convertToFtmsOutput(data);
-      // Debug: log HR being sent
-      if (ftmsOutput.heartRate !== undefined) {
-        console.log(`[DEBUG] Sending HR to broadcaster: ${ftmsOutput.heartRate}`);
-      }
-      window.electronAPI.broadcasterSendData(ftmsOutput);
-    }
+    latestFitnessData = data;
   });
 
   // When connection status changes, update the UI
   fitnessReader.onConnectionChange((connected, deviceName) => {
     if (connected && deviceName) {
       statusIndicator.setConnected(deviceName);
+      startUpdateInterval();
     } else {
+      stopUpdateInterval();
       statusIndicator.setDisconnected();
       dataDisplay.reset();
       activityLog.log('Device disconnected');
@@ -242,6 +241,35 @@ function setupIpcListeners(): void {
 // =============================================================================
 // BROADCAST HANDLING
 // =============================================================================
+
+/**
+ * Start the 1-second interval that updates the display and sends data to the broadcaster.
+ */
+function startUpdateInterval(): void {
+  stopUpdateInterval();
+  updateInterval = setInterval(() => {
+    if (!latestFitnessData) return;
+
+    // Update display once per second
+    dataDisplay.update(latestFitnessData);
+
+    // Forward to broadcaster if broadcasting
+    if (window.electronAPI && statusIndicator.getIsBroadcasting()) {
+      window.electronAPI.broadcasterSendData(convertToFtmsOutput(latestFitnessData));
+    }
+  }, 1000);
+}
+
+/**
+ * Stop the update interval and clear stored data.
+ */
+function stopUpdateInterval(): void {
+  if (updateInterval) {
+    clearInterval(updateInterval);
+    updateInterval = null;
+  }
+  latestFitnessData = null;
+}
 
 /**
  * Handle broadcast button click - toggle broadcasting on/off
