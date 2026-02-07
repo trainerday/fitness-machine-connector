@@ -101,22 +101,12 @@ export class DataDisplay {
   private currentSourceType: FitnessData['sourceType'] | null = null;
   private liveFieldElements: Map<string, HTMLSpanElement> = new Map();
 
-  // FTMS output elements - core fields
+  // FTMS output elements
   private ftmsElements: {
     power: HTMLSpanElement;
     cadence: HTMLSpanElement;
     hr: HTMLSpanElement;
-    // Additional fields
-    distance: HTMLSpanElement;
-    calories: HTMLSpanElement;
-    elapsed: HTMLSpanElement;
   };
-
-  // Expandable section elements
-  private toggleBtn: HTMLButtonElement;
-  private expandIcon: HTMLSpanElement;
-  private additionalFields: HTMLElement;
-  private isExpanded: boolean = false;
 
   constructor() {
     this.liveDataGrid = this.getElement('live-data-grid');
@@ -126,17 +116,7 @@ export class DataDisplay {
       power: this.getElement('ftms-power') as HTMLSpanElement,
       cadence: this.getElement('ftms-cadence') as HTMLSpanElement,
       hr: this.getElement('ftms-hr') as HTMLSpanElement,
-      distance: this.getElement('ftms-distance') as HTMLSpanElement,
-      calories: this.getElement('ftms-calories') as HTMLSpanElement,
-      elapsed: this.getElement('ftms-elapsed') as HTMLSpanElement,
     };
-
-    // Set up expandable section
-    this.toggleBtn = this.getElement('toggle-additional') as HTMLButtonElement;
-    this.expandIcon = this.toggleBtn.querySelector('.expand-icon') as HTMLSpanElement;
-    this.additionalFields = this.getElement('additional-fields');
-
-    this.setupExpandToggle();
   }
 
   private getElement(id: string): HTMLElement {
@@ -145,25 +125,6 @@ export class DataDisplay {
       throw new Error(`Data display element not found: ${id}`);
     }
     return element;
-  }
-
-  /**
-   * Set up the expand/collapse toggle for additional fields
-   */
-  private setupExpandToggle(): void {
-    this.toggleBtn.addEventListener('click', () => {
-      this.isExpanded = !this.isExpanded;
-
-      if (this.isExpanded) {
-        this.additionalFields.style.display = 'block';
-        this.expandIcon.classList.add('expanded');
-        this.toggleBtn.innerHTML = '<span class="expand-icon expanded">▶</span> Hide additional fields';
-      } else {
-        this.additionalFields.style.display = 'none';
-        this.expandIcon.classList.remove('expanded');
-        this.toggleBtn.innerHTML = '<span class="expand-icon">▶</span> Show additional fields';
-      }
-    });
   }
 
   /**
@@ -233,15 +194,9 @@ export class DataDisplay {
    * Update the FTMS output display
    */
   private updateFtmsOutput(output: FtmsOutput): void {
-    // Core fields
     this.ftmsElements.power.textContent = Math.round(output.power).toString();
     this.ftmsElements.cadence.textContent = Math.round(output.cadence).toString();
     this.ftmsElements.hr.textContent = output.heartRate !== undefined ? Math.round(output.heartRate).toString() : '--';
-
-    // Additional fields
-    this.ftmsElements.distance.textContent = output.distance !== undefined ? Math.round(output.distance).toString() : '--';
-    this.ftmsElements.calories.textContent = output.calories !== undefined ? Math.round(output.calories).toString() : '--';
-    this.ftmsElements.elapsed.textContent = output.elapsedTime !== undefined ? formatDuration(output.elapsedTime) : '--';
   }
 
   /**
@@ -253,9 +208,6 @@ export class DataDisplay {
       power: data.power ?? 0,
       cadence: data.cadence ?? 0,
       heartRate: data.heartRate,
-      distance: data.distance ? data.distance * 1000 : undefined, // Convert km to meters
-      calories: data.calories,
-      elapsedTime: data.duration,
     };
   }
 
@@ -269,19 +221,9 @@ export class DataDisplay {
     this.liveDataGrid.innerHTML = '<div class="no-data">Connect a device to see live data</div>';
     this.sourceTypeElement.textContent = '--';
 
-    // Reset FTMS output - core fields
+    // Reset FTMS output
     this.ftmsElements.power.textContent = '--';
     this.ftmsElements.cadence.textContent = '--';
     this.ftmsElements.hr.textContent = '--';
-
-    // Reset FTMS output - additional fields
-    this.ftmsElements.distance.textContent = '--';
-    this.ftmsElements.calories.textContent = '--';
-    this.ftmsElements.elapsed.textContent = '--';
-
-    // Collapse additional fields
-    this.isExpanded = false;
-    this.additionalFields.style.display = 'none';
-    this.toggleBtn.innerHTML = '<span class="expand-icon">▶</span> Show additional fields';
   }
 }

@@ -174,9 +174,6 @@ function convertToFtmsOutput(data: FitnessData): FtmsOutput {
     power: data.power ?? 0,
     cadence: data.cadence ?? 0,
     heartRate: data.heartRate,
-    distance: data.distance ? Math.round(data.distance * 1000) : undefined, // Convert km to meters
-    calories: data.calories,
-    elapsedTime: data.duration,
   };
 }
 
