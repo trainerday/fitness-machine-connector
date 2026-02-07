@@ -184,10 +184,12 @@ function convertToFtmsOutput(data: FitnessData): FtmsOutput {
  * Set up callbacks for fitness data and connection changes.
  */
 function setupFitnessReaderCallbacks(): void {
-  // When fitness data arrives, just store the latest values.
+  // When fitness data arrives, merge into stored values.
+  // Different characteristics (FTMS, HR, etc.) fire independently,
+  // so we merge to keep all fields up to date.
   // The 1-second interval handles both display and broadcasting.
   fitnessReader.onFitnessData((data) => {
-    latestFitnessData = data;
+    latestFitnessData = { ...latestFitnessData, ...data };
   });
 
   // When connection status changes, update the UI
