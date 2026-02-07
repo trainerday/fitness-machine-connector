@@ -63,22 +63,18 @@ function formatDuration(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
+/** Core fields shown for all device types */
+const CORE_FIELDS: FieldConfig[] = [
+  { id: 'power', label: 'Power', unit: 'W', getValue: (d) => d.power !== undefined ? Math.round(d.power).toString() : '--' },
+  { id: 'cadence', label: 'Cadence', unit: 'RPM', getValue: (d) => d.cadence !== undefined ? Math.round(d.cadence).toString() : '--' },
+  { id: 'hr', label: 'Heart Rate', unit: 'BPM', getValue: (d) => d.heartRate !== undefined ? Math.round(d.heartRate).toString() : '--' },
+];
+
 /**
  * Get field configuration for a source type
  */
-function getFieldsForSource(sourceType: FitnessData['sourceType']): FieldConfig[] {
-  switch (sourceType) {
-    case 'keiser-m3i':
-      return KEISER_M3I_FIELDS;
-    case 'ftms':
-      return FTMS_FIELDS;
-    case 'cycling-power':
-      return CYCLING_POWER_FIELDS;
-    case 'heart-rate':
-      return HEART_RATE_FIELDS;
-    default:
-      return [];
-  }
+function getFieldsForSource(_sourceType: FitnessData['sourceType']): FieldConfig[] {
+  return CORE_FIELDS;
 }
 
 /**
