@@ -276,7 +276,7 @@ function init(): void {
   statusIndicator = new StatusIndicator();
   deviceList = new DeviceList();
 
-  activityLog.log('Initializing Trainerday Device Translator...');
+  activityLog.log('Initializing FitBridge...');
 
   // Check Bluetooth availability
   if (!checkBluetoothAvailability()) {

@@ -1,8 +1,8 @@
 {
-  "name": "trainerday-device-translator-for-windows",
-  "productName": "trainerday-device-translator-for-windows",
+  "name": "fitbridge",
+  "productName": "FitBridge",
   "version": "1.0.1",
-  "description": "Translates fitness device data to FTMS for apps like Zwift",
+  "description": "Bridge fitness devices to FTMS for apps like Zwift and TrainerDay",
   "main": ".vite/build/main.js",
   "private": true,
   "scripts": {
