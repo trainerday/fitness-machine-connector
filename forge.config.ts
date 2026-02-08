@@ -10,6 +10,7 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    executableName: process.platform === 'linux' ? 'fitbridge' : 'FitBridge',
     extraResource: [
       // C# FTMS broadcaster executable (built with: npm run ftms:build)
       // Will be available at process.resourcesPath at runtime
