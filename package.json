@@ -1,7 +1,7 @@
 {
   "name": "trainerday-device-translator-for-windows",
   "productName": "trainerday-device-translator-for-windows",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Translates fitness device data to FTMS for apps like Zwift",
   "main": ".vite/build/main.js",
   "private": true,
