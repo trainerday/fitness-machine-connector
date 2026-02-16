@@ -1,3 +1,13 @@
+# Builds FitBridge for Windows, macOS (Intel + Apple Silicon), and Linux.
+# Triggered on every push to master.
+#
+# Release files:
+#   - FitBridge-Windows-Setup.exe
+#   - FitBridge-macOS-Apple-Silicon.zip  (M1/M2/M3/M4 Macs)
+#   - FitBridge-macOS-Intel.zip          (older Intel Macs)
+#   - FitBridge-Linux.deb                (Ubuntu/Debian)
+#   - FitBridge-Linux.rpm                (Fedora/RedHat)
+
 name: Build & Release
 
 on:
@@ -12,6 +22,8 @@ permissions:
   contents: write
 
 jobs:
+
+  # ── Step 1: Bump the version and create a git tag ──────────────────────
   version:
     runs-on: ubuntu-latest
     outputs:
@@ -45,6 +57,9 @@ jobs:
           git push origin master
           git push origin ${{ steps.bump.outputs.tag }}
 
+  # ── Step 2a: Build for Windows ─────────────────────────────────────────
+  # Produces: FitBridge-Windows-Setup.exe
+  # Also builds the C# FTMS Bluetooth broadcaster that ships with Windows
   build-windows:
     needs: version
     runs-on: windows-latest
@@ -59,6 +74,7 @@ jobs:
           node-version: 20
           cache: 'npm'
 
+      # The C# broadcaster is only needed on Windows
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
@@ -73,6 +89,7 @@ jobs:
       - name: Build Electron app
         run: npm run make
 
+      # Rename to a user-friendly filename
       - name: Rename artifact
         shell: bash
         run: |
@@ -85,6 +102,9 @@ jobs:
           name: windows-build
           path: FitBridge-Windows-Setup.exe
 
+  # ── Step 2b: Build for macOS Apple Silicon (M1/M2/M3/M4) ──────────────
+  # Produces: FitBridge-macOS-Apple-Silicon.zip
+  # Uses macos-latest which runs on ARM (Apple Silicon)
   build-macos-apple-silicon:
     needs: version
     runs-on: macos-latest
@@ -116,6 +136,9 @@ jobs:
           name: macos-arm64-build
           path: FitBridge-macOS-Apple-Silicon.zip
 
+  # ── Step 2c: Build for macOS Intel ─────────────────────────────────────
+  # Produces: FitBridge-macOS-Intel.zip
+  # Uses macos-13 which is the last Intel-based GitHub runner
   build-macos-intel:
     needs: version
     runs-on: macos-13
@@ -147,6 +170,8 @@ jobs:
           name: macos-x64-build
           path: FitBridge-macOS-Intel.zip
 
+  # ── Step 2d: Build for Linux ───────────────────────────────────────────
+  # Produces: FitBridge-Linux.deb (Ubuntu/Debian) and FitBridge-Linux.rpm (Fedora/RedHat)
   build-linux:
     needs: version
     runs-on: ubuntu-latest
@@ -161,6 +186,7 @@ jobs:
           node-version: 20
           cache: 'npm'
 
+      # Bluetooth and packaging libraries needed for Linux builds
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -187,6 +213,8 @@ jobs:
             FitBridge-Linux.deb
             FitBridge-Linux.rpm
 
+  # ── Step 3: Create GitHub Release with all platform builds ─────────────
+  # Collects all artifacts and publishes them as a single release
   release:
     needs: [version, build-windows, build-macos-apple-silicon, build-macos-intel, build-linux]
     runs-on: ubuntu-latest
