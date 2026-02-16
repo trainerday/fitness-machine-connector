@@ -1,7 +1,7 @@
 {
   "name": "fitbridge",
   "productName": "FitBridge",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Bridge fitness devices to FTMS for apps like Zwift and TrainerDay",
   "main": ".vite/build/main.js",
   "private": true,
