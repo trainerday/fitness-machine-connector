@@ -22,6 +22,9 @@ const config: ForgeConfig = {
       ? {
           osxSign: {
             identity: process.env.APPLE_IDENTITY,
+            optionsForFile: () => ({
+              entitlements: './entitlements.plist',
+            }),
           },
           osxNotarize: {
             appleId: process.env.APPLE_ID!,
