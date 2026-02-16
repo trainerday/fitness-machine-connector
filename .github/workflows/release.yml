@@ -128,7 +128,7 @@ jobs:
       # Import the Developer ID certificate into a temporary keychain
       # This step is skipped if the APPLE_CERTIFICATE secret is not set
       - name: Import Apple certificate
-        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        if: env.APPLE_CERTIFICATE != ''
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -194,7 +194,7 @@ jobs:
       # Import the Developer ID certificate into a temporary keychain
       # This step is skipped if the APPLE_CERTIFICATE secret is not set
       - name: Import Apple certificate
-        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        if: env.APPLE_CERTIFICATE != ''
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
