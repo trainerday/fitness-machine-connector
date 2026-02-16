@@ -108,7 +108,8 @@ jobs:
   # ── Step 2b: Build for macOS Apple Silicon (M1/M2/M3/M4) ──────────────
   # Produces: FitBridge-macOS-Apple-Silicon.zip
   # Uses macos-latest which runs on ARM (Apple Silicon)
-  # Signs and notarizes the app so users don't get the "malware" warning
+  # If APPLE_CERTIFICATE secret is set, signs and notarizes the app.
+  # Otherwise builds unsigned (users will need to run: xattr -cr FitBridge.app)
   build-macos-apple-silicon:
     needs: version
     runs-on: macos-latest
@@ -124,8 +125,9 @@ jobs:
           cache: 'npm'
 
       # Import the Developer ID certificate into a temporary keychain
-      # so Electron Forge can use it for code signing
+      # This step is skipped if the APPLE_CERTIFICATE secret is not set
       - name: Import Apple certificate
+        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -134,29 +136,23 @@ jobs:
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
           KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
 
-          # Decode the certificate from base64
           echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERTIFICATE_PATH"
 
-          # Create a temporary keychain
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-          # Import the certificate into the keychain
           security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-          # Add the temporary keychain to the search list so codesign can find it
           security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
 
-          # Extract the identity name for signing (e.g. "Developer ID Application: ...")
           IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | head -1 | sed 's/.*"\(.*\)".*/\1/')
           echo "APPLE_IDENTITY=$IDENTITY" >> $GITHUB_ENV
 
       - name: Install dependencies
         run: npm ci
 
-      # Build, sign, and notarize the app
       - name: Build Electron app (arm64)
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -178,7 +174,8 @@ jobs:
   # ── Step 2c: Build for macOS Intel ─────────────────────────────────────
   # Produces: FitBridge-macOS-Intel.zip
   # Cross-compiles for x64 (Intel) on an ARM runner
-  # Signs and notarizes the app so users don't get the "malware" warning
+  # If APPLE_CERTIFICATE secret is set, signs and notarizes the app.
+  # Otherwise builds unsigned (users will need to run: xattr -cr FitBridge.app)
   build-macos-intel:
     needs: version
     runs-on: macos-latest
@@ -194,8 +191,9 @@ jobs:
           cache: 'npm'
 
       # Import the Developer ID certificate into a temporary keychain
-      # so Electron Forge can use it for code signing
+      # This step is skipped if the APPLE_CERTIFICATE secret is not set
       - name: Import Apple certificate
+        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -204,29 +202,23 @@ jobs:
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
           KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
 
-          # Decode the certificate from base64
           echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERTIFICATE_PATH"
 
-          # Create a temporary keychain
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-          # Import the certificate into the keychain
           security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-          # Add the temporary keychain to the search list so codesign can find it
           security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
 
-          # Extract the identity name for signing (e.g. "Developer ID Application: ...")
           IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | head -1 | sed 's/.*"\(.*\)".*/\1/')
           echo "APPLE_IDENTITY=$IDENTITY" >> $GITHUB_ENV
 
       - name: Install dependencies
         run: npm ci
 
-      # Build, sign, and notarize the app
       - name: Build Electron app (x64)
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
