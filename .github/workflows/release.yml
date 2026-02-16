@@ -141,10 +141,10 @@ jobs:
 
   # ── Step 2c: Build for macOS Intel ─────────────────────────────────────
   # Produces: FitBridge-macOS-Intel.zip
-  # Uses macos-13 which is the last Intel-based GitHub runner
+  # Cross-compiles for x64 (Intel) on an ARM runner
   build-macos-intel:
     needs: version
-    runs-on: macos-13
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
         with:
