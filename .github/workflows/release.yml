@@ -85,7 +85,7 @@ jobs:
           name: windows-build
           path: FitBridge-Windows-Setup.exe
 
-  build-macos:
+  build-macos-apple-silicon:
     needs: version
     runs-on: macos-latest
     steps:
@@ -102,19 +102,50 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Electron app (universal)
-        run: npx electron-forge make --arch=universal
+      - name: Build Electron app (arm64)
+        run: npx electron-forge make --arch=arm64
 
       - name: Rename artifact
         run: |
           ZIP=$(find out/make/zip/darwin -name "*.zip" | head -1)
-          cp "$ZIP" "FitBridge-macOS.zip"
+          cp "$ZIP" "FitBridge-macOS-Apple-Silicon.zip"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: macos-build
-          path: FitBridge-macOS.zip
+          name: macos-arm64-build
+          path: FitBridge-macOS-Apple-Silicon.zip
+
+  build-macos-intel:
+    needs: version
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Electron app (x64)
+        run: npx electron-forge make --arch=x64
+
+      - name: Rename artifact
+        run: |
+          ZIP=$(find out/make/zip/darwin -name "*.zip" | head -1)
+          cp "$ZIP" "FitBridge-macOS-Intel.zip"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-x64-build
+          path: FitBridge-macOS-Intel.zip
 
   build-linux:
     needs: version
@@ -157,7 +188,7 @@ jobs:
             FitBridge-Linux.rpm
 
   release:
-    needs: [version, build-windows, build-macos, build-linux]
+    needs: [version, build-windows, build-macos-apple-silicon, build-macos-intel, build-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -178,6 +209,7 @@ jobs:
           generate_release_notes: true
           files: |
             artifacts/windows-build/FitBridge-Windows-Setup.exe
-            artifacts/macos-build/FitBridge-macOS.zip
+            artifacts/macos-arm64-build/FitBridge-macOS-Apple-Silicon.zip
+            artifacts/macos-x64-build/FitBridge-macOS-Intel.zip
             artifacts/linux-build/FitBridge-Linux.deb
             artifacts/linux-build/FitBridge-Linux.rpm
