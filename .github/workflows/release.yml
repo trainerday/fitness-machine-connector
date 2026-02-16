@@ -11,12 +11,15 @@
 name: Build & Release
 
 on:
+  # Auto-trigger on push to master
   push:
     branches:
       - master
     # Don't trigger on version bump commits from this workflow
     paths-ignore:
       - '.github/**'
+  # Manual trigger from GitHub Actions tab (click "Run workflow")
+  workflow_dispatch:
 
 permissions:
   contents: write
