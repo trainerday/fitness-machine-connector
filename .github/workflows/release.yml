@@ -1,6 +1,7 @@
 # Builds FitBridge for Windows, macOS (Intel + Apple Silicon), and Linux.
 # Triggered on every push to master.
 #
+#
 # Release files:
 #   - FitBridge-Windows-Setup.exe
 #   - FitBridge-macOS-Apple-Silicon.zip  (M1/M2/M3/M4 Macs)
