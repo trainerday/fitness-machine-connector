@@ -16,6 +16,20 @@ const config: ForgeConfig = {
       // Will be available at process.resourcesPath at runtime
       ...(process.platform === 'win32' ? ['./resources/FTMSBluetoothForwarder.exe'] : []),
     ].filter(Boolean),
+    // macOS code signing — uses the Developer ID certificate from the keychain.
+    // The APPLE_IDENTITY env var is set in CI; locally this is skipped.
+    ...(process.platform === 'darwin' && process.env.APPLE_IDENTITY
+      ? {
+          osxSign: {
+            identity: process.env.APPLE_IDENTITY,
+          },
+          osxNotarize: {
+            appleId: process.env.APPLE_ID!,
+            appleIdPassword: process.env.APPLE_ID_PASSWORD!,
+            teamId: process.env.APPLE_TEAM_ID!,
+          },
+        }
+      : {}),
   },
   rebuildConfig: {},
   makers: [
