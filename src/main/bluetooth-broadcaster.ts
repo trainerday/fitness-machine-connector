@@ -236,7 +236,7 @@ export class BluetoothBroadcaster extends EventEmitter {
     super();
 
     // Choose backend based on platform
-    if (shouldUseBleno() && BlenoBroadcaster.isAvailable()) {
+    if (shouldUseBleno()) {
       console.log('Using Bleno backend for BLE broadcasting (macOS/Linux)');
       this.backend = new BlenoBroadcaster();
       this.backendType = 'bleno';
