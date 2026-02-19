@@ -10,9 +10,9 @@ import { FtmsOutput } from '../shared/types/fitness-data';
 // Conditionally require bleno - it's not available on Windows
 let bleno: any = null;
 try {
-  bleno = require('@abandonware/bleno');
+  bleno = require('@stoprocent/bleno');
 } catch (e) {
-  console.log('Bleno not available on this platform');
+  console.error('Bleno not available:', e);
 }
 
 // FTMS Service and Characteristic UUIDs

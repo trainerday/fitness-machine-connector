@@ -49,6 +49,6 @@
     "electron-squirrel-startup": "^1.0.1"
   },
   "optionalDependencies": {
-    "@abandonware/bleno": "^0.6.0"
+    "@stoprocent/bleno": "^0.12.1"
   }
 }
