@@ -9,9 +9,11 @@ import { FtmsOutput } from '../shared/types/fitness-data';
 
 // Conditionally require bleno - it's not available on Windows
 let bleno: any = null;
+let blenoLoadError: string | null = null;
 try {
   bleno = require('@stoprocent/bleno');
 } catch (e) {
+  blenoLoadError = String(e);
   console.error('Bleno not available:', e);
 }
 
@@ -410,7 +412,7 @@ export class BlenoBroadcaster extends EventEmitter {
    */
   start(): void {
     if (!bleno) {
-      this.status = { state: 'error', error: 'Bleno not available' };
+      this.status = { state: 'error', error: `Bleno not available: ${blenoLoadError}` };
       this.emit('status', this.status);
       return;
     }
