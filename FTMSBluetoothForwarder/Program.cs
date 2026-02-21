@@ -118,9 +118,6 @@ var stdinTask = Task.Run(() =>
                     Power = input.Power ?? 0,
                     Cadence = input.Cadence ?? 0,
                     HeartRate = input.HeartRate ?? 0,
-                    Distance = input.Distance ?? 0,
-                    Calories = input.Calories ?? 0,
-                    ElapsedTime = input.ElapsedTime ?? 0
                 };
 
                 // Debug: log received heart rate (remove once verified working)
@@ -177,8 +174,5 @@ class InputData
     public int? Power { get; set; }
     public double? Cadence { get; set; }
     public int? HeartRate { get; set; }
-    public int? Distance { get; set; }
-    public int? Calories { get; set; }
-    public int? ElapsedTime { get; set; }
     public string? Command { get; set; }
 }

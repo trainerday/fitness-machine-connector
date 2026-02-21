@@ -15,14 +15,14 @@ namespace FTMSBluetoothForwarder
         /// - Bit 1: Average Speed Present (0 = not present)
         /// - Bit 2: Instantaneous Cadence Present (1 = present)
         /// - Bit 3: Average Cadence Present (0 = not present)
-        /// - Bit 4: Total Distance Present (1 = present)
+        /// - Bit 4: Total Distance Present (0 = not present)
         /// - Bit 5: Resistance Level Present (0 = not present)
         /// - Bit 6: Instantaneous Power Present (1 = present)
         /// - Bit 7: Average Power Present (0 = not present)
-        /// - Bit 8: Expended Energy Present (1 = present)
+        /// - Bit 8: Expended Energy Present (0 = not present)
         /// - Bit 9: Heart Rate Present (1 = present)
         /// - Bit 10: Metabolic Equivalent Present (0 = not present)
-        /// - Bit 11: Elapsed Time Present (1 = present)
+        /// - Bit 11: Elapsed Time Present (0 = not present)
         /// - Bit 12: Remaining Time Present (0 = not present)
         /// </summary>
         // Debug flag - set to true to log packet bytes
@@ -47,30 +47,13 @@ namespace FTMSBluetoothForwarder
             ushort cadence = (ushort)(data.Cadence * 2); // 0.5 rpm resolution
             writer.Write(cadence);
 
-            // Bit 4: Total Distance (meters, 24-bit)
-            flags |= (1 << 4);
-            uint distance = (uint)data.Distance;
-            writer.Write((byte)(distance & 0xFF));
-            writer.Write((byte)((distance >> 8) & 0xFF));
-            writer.Write((byte)((distance >> 16) & 0xFF));
-
             // Bit 6: Instantaneous Power (watts, signed 16-bit)
             flags |= (1 << 6);
             writer.Write((short)data.Power);
 
-            // Bit 8: Expended Energy (total kcal uint16, per hour uint16, per minute uint8)
-            flags |= (1 << 8);
-            writer.Write((ushort)data.Calories); // Total energy
-            writer.Write((ushort)0); // Energy per hour (not used)
-            writer.Write((byte)0);   // Energy per minute (not used)
-
             // Bit 9: Heart Rate (bpm, uint8)
             flags |= (1 << 9);
             writer.Write((byte)data.HeartRate);
-
-            // Bit 11: Elapsed Time (seconds, uint16)
-            flags |= (1 << 11);
-            writer.Write((ushort)data.ElapsedTime);
 
             // Go back and write flags at the beginning
             var result = ms.ToArray();
@@ -82,7 +65,7 @@ namespace FTMSBluetoothForwarder
             {
                 var hex = BitConverter.ToString(result);
                 OnDebugLog($"FTMS Packet ({result.Length} bytes): {hex}");
-                OnDebugLog($"  Flags: 0x{flags:X4}, HR at byte 16: {result[16]}");
+                OnDebugLog($"  Flags: 0x{flags:X4}, HR at byte 8: {result[8]}");
             }
 
             return result;
@@ -96,12 +79,9 @@ namespace FTMSBluetoothForwarder
         {
             // Features we support (per FTMS spec section 4.3.1):
             // Bit 1: Cadence Supported
-            // Bit 2: Total Distance Supported
-            // Bit 9: Expended Energy Supported
             // Bit 10: Heart Rate Measurement Supported
-            // Bit 12: Elapsed Time Supported
             // Bit 14: Power Measurement Supported
-            uint features = (1u << 1) | (1u << 2) | (1u << 9) | (1u << 10) | (1u << 12) | (1u << 14);
+            uint features = (1u << 1) | (1u << 10) | (1u << 14);
             uint targetSettings = 0; // No target settings
 
             var result = new byte[8];
@@ -154,8 +134,5 @@ namespace FTMSBluetoothForwarder
         public int Power { get; set; }
         public double Cadence { get; set; }
         public int HeartRate { get; set; }
-        public int Distance { get; set; }
-        public int Calories { get; set; }
-        public int ElapsedTime { get; set; }
     }
 }

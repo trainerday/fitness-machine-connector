@@ -52,10 +52,6 @@ function createWindow(): void {
     );
   }
 
-  // Open DevTools in development
-  mainWindow.webContents.openDevTools();
-}
-
 // App lifecycle handlers
 app.on('ready', createWindow);
 
