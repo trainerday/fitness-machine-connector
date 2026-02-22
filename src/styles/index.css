@@ -318,6 +318,37 @@ section {
   background: #0f0f1a;
 }
 
+.log-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 15px;
+  width: 100%;
+  text-align: left;
+}
+
+.log-toggle:hover {
+  opacity: 0.8;
+}
+
+.log-toggle h2 {
+  margin-bottom: 0;
+}
+
+.log-toggle-icon {
+  color: #aaa;
+  font-size: 12px;
+  transition: transform 0.2s ease;
+}
+
+.log-toggle.expanded .log-toggle-icon {
+  transform: rotate(90deg);
+}
+
 .log-container {
   background: #1a1a2e;
   border-radius: 8px;
@@ -326,6 +357,14 @@ section {
   overflow-y: auto;
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 12px;
+  transition: max-height 0.2s ease, padding 0.2s ease, opacity 0.2s ease;
+}
+
+.log-container.collapsed {
+  max-height: 0;
+  padding: 0 15px;
+  opacity: 0;
+  overflow: hidden;
 }
 
 .log-entry {
