@@ -38,9 +38,9 @@ function createWindow(): void {
     deviceManager.handleDeviceDiscovered(devices, callback);
   });
 
-  // Send discovered devices to renderer when scan completes
-  deviceManager.setOnScanComplete((devices) => {
-    mainWindow.webContents.send('bluetooth-scan-complete', devices);
+  // Stream discovered devices to renderer as they're found
+  deviceManager.setOnDeviceFound((device) => {
+    mainWindow.webContents.send('bluetooth-device-found', device);
   });
 
   // Load the app

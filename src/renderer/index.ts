@@ -82,12 +82,15 @@ function checkBluetoothAvailability(): boolean {
 /**
  * Handle scan button click.
  * Initiates device scanning and connection flow.
+ * Can be clicked anytime to restart scanning.
  */
 async function handleScan(): Promise<void> {
-  activityLog.log('Scanning for Bluetooth devices (3 seconds)...');
+  activityLog.log('Scanning for Bluetooth devices...');
 
+  // Clear previous results and show scanning state
+  deviceList.clear();
+  deviceList.setScanning(true);
   statusIndicator.setScanning(true);
-  deviceList.hide();
   awaitingScanResults = true;
 
   // Tell main process to start fresh scan
@@ -99,12 +102,14 @@ async function handleScan(): Promise<void> {
     pendingBluetoothDevice = await fitnessReader.scanForDevices();
 
     if (pendingBluetoothDevice) {
+      deviceList.setScanning(false);
+      statusIndicator.setScanning(false);
       activityLog.log(`Connecting to ${pendingBluetoothDevice.name || 'Unknown'}...`);
       await connectToDevice(pendingBluetoothDevice);
     }
   } catch (error) {
     activityLog.log(`Scan error: ${(error as Error).message}`);
-  } finally {
+    deviceList.setScanning(false);
     statusIndicator.setScanning(false);
   }
 }
@@ -122,6 +127,8 @@ function handleDeviceSelection(deviceId: string, deviceName: string): void {
 
   // Stop listening for scan results
   awaitingScanResults = false;
+  deviceList.setScanning(false);
+  statusIndicator.setScanning(false);
 
   // Tell main process which device was selected
   if (window.electronAPI) {
@@ -214,24 +221,21 @@ function setupFitnessReaderCallbacks(): void {
 
 /**
  * Set up IPC listeners for main process communication.
- * Handles the device list display from Electron's Bluetooth scanning.
+ * Handles streaming device updates from Electron's Bluetooth scanning.
  */
 function setupIpcListeners(): void {
   if (!window.electronAPI) {
     return;
   }
 
-  window.electronAPI.onBluetoothScanComplete((devices: BluetoothDeviceInfo[]) => {
-    // Only show devices if we're still waiting for scan results
+  // Listen for devices as they're discovered (streaming)
+  window.electronAPI.onBluetoothDeviceFound((device: BluetoothDeviceInfo) => {
+    // Only add devices if we're still waiting for scan results
     if (!awaitingScanResults) {
       return;
     }
 
-    // Mark that we've received and displayed the results
-    awaitingScanResults = false;
-
-    deviceList.displayDevices(devices);
-    activityLog.log(`Found ${devices.length} device(s). Click one to connect.`);
+    deviceList.addDevice(device);
   });
 
   // Listen for broadcaster status updates

@@ -54,11 +54,10 @@ export class StatusIndicator {
   }
 
   /**
-   * Set scanning state
+   * Set scanning state - button stays enabled so user can re-scan anytime
    */
   setScanning(isScanning: boolean): void {
-    this.scanBtn.disabled = isScanning;
-    this.scanBtn.textContent = isScanning ? 'Scanning...' : 'Scan for Devices';
+    this.scanBtn.textContent = isScanning ? 'Rescan' : 'Scan for Devices';
   }
 
   /**

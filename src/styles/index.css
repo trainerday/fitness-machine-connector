@@ -142,10 +142,85 @@ section {
 }
 
 /* Device List */
+.device-list-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+}
+
+.device-list-header h2 {
+  margin-bottom: 0;
+}
+
+.device-count-badge {
+  background: rgba(76, 201, 240, 0.2);
+  color: #4cc9f0;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.scanning-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #4cc9f0;
+  font-size: 13px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.scanning-indicator::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  background: #4cc9f0;
+  border-radius: 50%;
+  animation: blink 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+}
+
+.filter-toggle {
+  margin-left: auto;
+}
+
 .device-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 5px;
+}
+
+/* Custom scrollbar for device list */
+.device-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.device-list::-webkit-scrollbar-track {
+  background: #1a1a2e;
+  border-radius: 3px;
+}
+
+.device-list::-webkit-scrollbar-thumb {
+  background: #4cc9f0;
+  border-radius: 3px;
+}
+
+.device-list::-webkit-scrollbar-thumb:hover {
+  background: #3db8df;
 }
 
 .device-item {
@@ -155,12 +230,17 @@ section {
   padding: 15px;
   background: #1a1a2e;
   border-radius: 8px;
-  cursor: pointer;
   transition: background 0.2s ease;
 }
 
 .device-item:hover {
   background: #252545;
+}
+
+.device-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .device-item .device-name {
@@ -170,6 +250,7 @@ section {
 .device-item .device-id {
   font-size: 12px;
   color: #666;
+  margin-top: 4px;
 }
 
 .device-item .device-info {
@@ -182,13 +263,15 @@ section {
   padding: 20px;
 }
 
-.device-item .fitness-badge {
+.fitness-badge {
   background: rgba(76, 201, 240, 0.2);
   color: #4cc9f0;
-  padding: 4px 8px;
+  padding: 3px 6px;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 /* Data Grid */

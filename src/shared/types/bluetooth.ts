@@ -41,7 +41,7 @@ export interface ElectronAPI {
   startBluetoothScan: () => void;
   selectBluetoothDevice: (deviceId: string) => void;
   cancelBluetoothRequest: () => void;
-  onBluetoothScanComplete: (callback: (devices: BluetoothDeviceInfo[]) => void) => void;
+  onBluetoothDeviceFound: (callback: (device: BluetoothDeviceInfo) => void) => void;
   removeBluetoothListeners: () => void;
 
   // FTMS Broadcaster

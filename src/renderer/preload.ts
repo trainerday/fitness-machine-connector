@@ -29,16 +29,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send('cancel-bluetooth-request');
   },
 
-  // Listen for scan complete with device list
-  onBluetoothScanComplete: (callback: (devices: Array<{ deviceId: string; deviceName: string }>) => void) => {
-    ipcRenderer.on('bluetooth-scan-complete', (_event, devices) => {
-      callback(devices);
+  // Listen for individual devices as they're discovered (streaming)
+  onBluetoothDeviceFound: (callback: (device: { deviceId: string; deviceName: string }) => void) => {
+    ipcRenderer.on('bluetooth-device-found', (_event, device) => {
+      callback(device);
     });
   },
 
   // Remove listener
   removeBluetoothListeners: () => {
-    ipcRenderer.removeAllListeners('bluetooth-scan-complete');
+    ipcRenderer.removeAllListeners('bluetooth-device-found');
   },
 
   // Broadcaster controls
