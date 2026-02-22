@@ -27,7 +27,7 @@ export class DeviceList {
   private onDeviceSelect: ((deviceId: string, deviceName: string) => void) | null = null;
   private devices: Map<string, BluetoothDeviceInfo> = new Map();
   private isScanning = false;
-  private showAllDevices = false;
+  private showAllDevices = true; // Default to showing all devices
 
   constructor() {
     const section = document.getElementById('device-list-section');
@@ -55,7 +55,7 @@ export class DeviceList {
     // Create filter toggle button
     this.filterToggle = document.createElement('button');
     this.filterToggle.className = 'btn btn-small btn-secondary filter-toggle';
-    this.filterToggle.textContent = 'Show All';
+    this.filterToggle.textContent = 'Fitness Only';
     this.filterToggle.addEventListener('click', () => this.toggleFilter());
 
     // Add elements to header
@@ -93,19 +93,21 @@ export class DeviceList {
 
     // Check if device should be visible based on filter
     const isFitness = this.isFitnessDevice(device.deviceName);
-    if (this.showAllDevices || isFitness) {
+    const shouldShow = this.showAllDevices || isFitness;
+
+    if (shouldShow) {
+      // Remove "no devices" message before adding first visible device
+      const noDevicesMsg = this.list.querySelector('.no-devices');
+      if (noDevicesMsg) {
+        noDevicesMsg.remove();
+      }
+
       const item = this.createDeviceItem(device, isFitness);
       this.list.appendChild(item);
     }
 
     // Show the section
     this.section.style.display = 'block';
-
-    // Remove "no devices" message if present
-    const noDevicesMsg = this.list.querySelector('.no-devices');
-    if (noDevicesMsg) {
-      noDevicesMsg.remove();
-    }
   }
 
   /**

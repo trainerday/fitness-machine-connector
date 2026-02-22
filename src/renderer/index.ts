@@ -230,8 +230,11 @@ function setupIpcListeners(): void {
 
   // Listen for devices as they're discovered (streaming)
   window.electronAPI.onBluetoothDeviceFound((device: BluetoothDeviceInfo) => {
+    console.log(`[Renderer] Device found: ${device.deviceName || 'Unknown'} (${device.deviceId})`);
+
     // Only add devices if we're still waiting for scan results
     if (!awaitingScanResults) {
+      console.log('[Renderer] Ignoring device - not awaiting scan results');
       return;
     }
 
