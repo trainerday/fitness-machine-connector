@@ -51,6 +51,7 @@ function createWindow(): void {
       path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
     );
   }
+}
 
 // App lifecycle handlers
 app.on('ready', createWindow);
