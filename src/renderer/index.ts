@@ -189,16 +189,25 @@ function setupFitnessReaderCallbacks(): void {
     latestFitnessData = { ...latestFitnessData, ...data };
   });
 
-  // When connection status changes, update the UI
+  // When connection status changes, update the UI and manage broadcasting
   fitnessReader.onConnectionChange((connected, deviceName) => {
     if (connected && deviceName) {
       statusIndicator.setConnected(deviceName);
       startUpdateInterval();
+      // Auto-start FTMS broadcast when device connects
+      if (window.electronAPI) {
+        activityLog.log('Starting FTMS broadcast...');
+        window.electronAPI.broadcasterStart();
+      }
     } else {
       stopUpdateInterval();
       statusIndicator.setDisconnected();
       dataDisplay.reset();
       activityLog.log('Device disconnected');
+      // Auto-stop FTMS broadcast when device disconnects
+      if (window.electronAPI) {
+        window.electronAPI.broadcasterStop();
+      }
     }
   });
 }
@@ -270,24 +279,6 @@ function stopUpdateInterval(): void {
   latestFitnessData = null;
 }
 
-/**
- * Handle broadcast button click - toggle broadcasting on/off
- */
-function handleBroadcastToggle(): void {
-  if (!window.electronAPI) {
-    activityLog.log('ERROR: Electron API not available');
-    return;
-  }
-
-  if (statusIndicator.getIsBroadcasting()) {
-    activityLog.log('Stopping FTMS broadcast...');
-    window.electronAPI.broadcasterStop();
-  } else {
-    activityLog.log('Starting FTMS broadcast...');
-    window.electronAPI.broadcasterStart();
-  }
-}
-
 // =============================================================================
 // INITIALIZATION
 // =============================================================================
@@ -313,7 +304,6 @@ function init(): void {
   // Set up UI event handlers
   statusIndicator.onScanClick(handleScan);
   statusIndicator.onDisconnectClick(handleDisconnect);
-  statusIndicator.onBroadcastClick(handleBroadcastToggle);
   deviceList.onSelect(handleDeviceSelection);
 
   // Set up fitness reader callbacks
