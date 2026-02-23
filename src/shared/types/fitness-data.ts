@@ -16,8 +16,8 @@ export interface FitnessData {
   gear?: number;         // Gear level (1-24 for Keiser)
   resistance?: number;   // Resistance level
 
-  // Device info
-  sourceType?: 'ftms' | 'keiser-m3i' | 'cycling-power' | 'heart-rate';
+  // Device info - matches the 'id' field in device spec JSON files
+  sourceType?: 'ftms-indoor-bike' | 'keiser-m3i' | 'cycling-power' | 'heart-rate' | 'echelon' | string;
 }
 
 /**

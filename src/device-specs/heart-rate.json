@@ -1,0 +1,35 @@
+{
+  "id": "heart-rate",
+  "name": "Heart Rate Monitor",
+  "description": "Standard Bluetooth Heart Rate Service (0x180D)",
+
+  "serviceUuid": "0x180d",
+  "characteristicUuid": "0x2a37",
+
+  "minLength": 2,
+
+  "fields": [
+    {
+      "name": "heartRate",
+      "offset": 1,
+      "type": "uint8",
+      "condition": {
+        "flagOffset": 0,
+        "flagBit": 0,
+        "flagValue": false
+      },
+      "comment": "8-bit HR when flag bit 0 is 0"
+    },
+    {
+      "name": "heartRate",
+      "offset": 1,
+      "type": "uint16",
+      "condition": {
+        "flagOffset": 0,
+        "flagBit": 0,
+        "flagValue": true
+      },
+      "comment": "16-bit HR when flag bit 0 is 1"
+    }
+  ]
+}

@@ -27,12 +27,17 @@
  */
 
 /**
+ * UUID type - supports both 16-bit (number) and 128-bit (string) UUIDs.
+ */
+export type BluetoothUuid = number | string;
+
+/**
  * Configuration for a characteristic to subscribe to.
  * Just UUIDs - no interpretation of what they mean.
  */
 export interface CharacteristicSubscription {
-  serviceUuid: number;
-  characteristicUuid: number;
+  serviceUuid: BluetoothUuid;
+  characteristicUuid: BluetoothUuid;
 }
 
 /**
@@ -40,7 +45,7 @@ export interface CharacteristicSubscription {
  * Contains the characteristic UUID and raw bytes - no interpretation.
  */
 export interface RawBluetoothData {
-  characteristicUuid: number;
+  characteristicUuid: BluetoothUuid;
   rawValue: DataView;
 }
 
@@ -99,9 +104,9 @@ class BluetoothService {
    * Scan for available Bluetooth devices.
    * Returns the selected device or null if cancelled.
    *
-   * @param serviceUuids - List of service UUIDs to filter/allow access to
+   * @param serviceUuids - List of service UUIDs to filter/allow access to (16-bit or 128-bit)
    */
-  async scanForDevices(serviceUuids: number[]): Promise<BluetoothDevice | null> {
+  async scanForDevices(serviceUuids: BluetoothUuid[]): Promise<BluetoothDevice | null> {
     if (!this.isAvailable()) {
       throw new Error('Web Bluetooth is not available');
     }
@@ -179,14 +184,18 @@ class BluetoothService {
    * Returns true if successful, false otherwise.
    */
   private async trySubscribe(
-    serviceUuid: number,
-    characteristicUuid: number
+    serviceUuid: BluetoothUuid,
+    characteristicUuid: BluetoothUuid
   ): Promise<boolean> {
     if (!this.gattServer) return false;
 
+    console.log(`[BluetoothService] Trying to subscribe: service=${serviceUuid}, char=${characteristicUuid}`);
+
     try {
       const service = await this.gattServer.getPrimaryService(serviceUuid);
+      console.log(`[BluetoothService] Got service: ${serviceUuid}`);
       const characteristic = await service.getCharacteristic(characteristicUuid);
+      console.log(`[BluetoothService] Got characteristic: ${characteristicUuid}`);
 
       characteristic.addEventListener('characteristicvaluechanged', (event) => {
         const value = (event.target as BluetoothRemoteGATTCharacteristic).value;
@@ -196,8 +205,10 @@ class BluetoothService {
       });
 
       await characteristic.startNotifications();
+      console.log(`[BluetoothService] Subscribed successfully to ${characteristicUuid}`);
       return true;
-    } catch {
+    } catch (error) {
+      console.log(`[BluetoothService] Failed to subscribe to service=${serviceUuid}, char=${characteristicUuid}:`, error);
       return false;
     }
   }
@@ -205,7 +216,7 @@ class BluetoothService {
   /**
    * Emit raw data to registered callback.
    */
-  private emitRawData(characteristicUuid: number, rawValue: DataView): void {
+  private emitRawData(characteristicUuid: BluetoothUuid, rawValue: DataView): void {
     if (this.rawDataCallback) {
       this.rawDataCallback({ characteristicUuid, rawValue });
     }
