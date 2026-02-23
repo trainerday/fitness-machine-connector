@@ -7,13 +7,22 @@ import { BluetoothDeviceInfo } from '../../shared/types';
 
 // Known fitness device name patterns for filtering
 const FITNESS_DEVICE_PATTERNS = [
+  // Major fitness equipment brands
   /wahoo/i, /kickr/i, /garmin/i, /zwift/i, /tacx/i, /elite/i, /saris/i,
-  /stages/i, /assioma/i, /favero/i, /quarq/i, /power2max/i, /srm/i,
+  /keiser/i, /wattbike/i, /stages/i, /assioma/i, /favero/i, /quarq/i,
+  /power2max/i, /srm/i, /4iiii/i, /magene/i, /xoss/i, /coospo/i,
+  /polar/i, /suunto/i, /coros/i, /moofit/i, /icg/i, /lifefitness/i,
+  // Heart rate keywords
   /hr/i, /hrm/i, /heart/i, /pulse/i,
+  // Cycling/fitness keywords
   /bike/i, /trainer/i, /cycling/i, /cadence/i, /speed/i, /power/i,
+  /fitness/i, /spin/i, /indoor/i,
+  // BLE fitness service indicators
   /ftms/i, /csc/i, /cps/i,
+  // Home fitness brands
   /peloton/i, /echelon/i, /bowflex/i, /schwinn/i, /nordictrack/i,
   /concept2/i, /pm5/i, /ergometer/i, /rower/i,
+  // App-specific
   /trainerday/i, /td\s/i,
 ];
 
