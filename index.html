@@ -65,21 +65,26 @@
         </div>
       </section>
 
-      <section class="data-section">
-        <h2>Live Data <span class="source-badge" id="source-type">--</span></h2>
-        <div id="live-data-grid" class="data-grid">
-          <!-- Dynamically populated based on source device type -->
-          <div class="no-data">Connect a device to see live data</div>
-        </div>
-      </section>
-
-      <section class="log-section">
-        <button id="log-toggle" class="log-toggle">
-          <span class="log-toggle-icon">&#9654;</span>
-          <h2>Activity Log</h2>
+      <section class="advanced-section">
+        <button id="advanced-toggle" class="advanced-toggle">
+          <span class="advanced-toggle-icon">&#9654;</span>
+          <h2>Advanced</h2>
         </button>
-        <div id="log" class="log-container collapsed">
-          <div class="log-entry">Application started. Click "Scan for Devices" to begin.</div>
+        <div id="advanced-content" class="advanced-content collapsed">
+          <div class="advanced-subsection">
+            <h3>Live Data <span class="source-badge" id="source-type">--</span></h3>
+            <div id="live-data-grid" class="data-grid">
+              <!-- Dynamically populated based on source device type -->
+              <div class="no-data">Connect a device to see live data</div>
+            </div>
+          </div>
+
+          <div class="advanced-subsection">
+            <h3>Activity Log</h3>
+            <div id="log" class="log-container">
+              <div class="log-entry">Application started. Click "Scan for Devices" to begin.</div>
+            </div>
+          </div>
         </div>
       </section>
     </div>

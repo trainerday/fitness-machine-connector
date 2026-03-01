@@ -396,12 +396,12 @@ section {
   margin-left: 4px;
 }
 
-/* Log */
-.log-section {
+/* Advanced Section */
+.advanced-section {
   background: #0f0f1a;
 }
 
-.log-toggle {
+.advanced-toggle {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -414,24 +414,55 @@ section {
   text-align: left;
 }
 
-.log-toggle:hover {
+.advanced-toggle:hover {
   opacity: 0.8;
 }
 
-.log-toggle h2 {
+.advanced-toggle h2 {
   margin-bottom: 0;
 }
 
-.log-toggle-icon {
+.advanced-toggle-icon {
   color: #aaa;
   font-size: 12px;
   transition: transform 0.2s ease;
 }
 
-.log-toggle.expanded .log-toggle-icon {
+.advanced-toggle.expanded .advanced-toggle-icon {
   transform: rotate(90deg);
 }
 
+.advanced-content {
+  transition: max-height 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
+}
+
+.advanced-content.collapsed {
+  max-height: 0;
+  padding: 0;
+  opacity: 0;
+  overflow: hidden;
+}
+
+.advanced-subsection {
+  background: #16213e;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 15px;
+}
+
+.advanced-subsection:last-child {
+  margin-bottom: 0;
+}
+
+.advanced-subsection h3 {
+  font-size: 14px;
+  color: #888;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* Log Container */
 .log-container {
   background: #1a1a2e;
   border-radius: 8px;
@@ -440,14 +471,6 @@ section {
   overflow-y: auto;
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 12px;
-  transition: max-height 0.2s ease, padding 0.2s ease, opacity 0.2s ease;
-}
-
-.log-container.collapsed {
-  max-height: 0;
-  padding: 0 15px;
-  opacity: 0;
-  overflow: hidden;
 }
 
 .log-entry {

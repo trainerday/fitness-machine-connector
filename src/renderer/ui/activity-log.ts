@@ -4,7 +4,8 @@
 
 export class ActivityLog {
   private container: HTMLDivElement;
-  private toggleBtn: HTMLButtonElement | null = null;
+  private advancedToggleBtn: HTMLButtonElement | null = null;
+  private advancedContent: HTMLDivElement | null = null;
   private isExpanded: boolean = false;
 
   constructor(containerId: string) {
@@ -13,44 +14,45 @@ export class ActivityLog {
       throw new Error(`Activity log container not found: ${containerId}`);
     }
     this.container = element as HTMLDivElement;
-    this.setupToggle();
+    this.setupAdvancedToggle();
   }
 
   /**
-   * Set up the expand/collapse toggle
+   * Set up the expand/collapse toggle for the Advanced section
    */
-  private setupToggle(): void {
-    this.toggleBtn = document.getElementById('log-toggle') as HTMLButtonElement;
-    if (this.toggleBtn) {
-      this.toggleBtn.addEventListener('click', () => this.toggle());
+  private setupAdvancedToggle(): void {
+    this.advancedToggleBtn = document.getElementById('advanced-toggle') as HTMLButtonElement;
+    this.advancedContent = document.getElementById('advanced-content') as HTMLDivElement;
+    if (this.advancedToggleBtn) {
+      this.advancedToggleBtn.addEventListener('click', () => this.toggle());
     }
   }
 
   /**
-   * Toggle the activity log visibility
+   * Toggle the Advanced section visibility
    */
   private toggle(): void {
     this.isExpanded = !this.isExpanded;
-    this.container.classList.toggle('collapsed', !this.isExpanded);
-    this.toggleBtn?.classList.toggle('expanded', this.isExpanded);
+    this.advancedContent?.classList.toggle('collapsed', !this.isExpanded);
+    this.advancedToggleBtn?.classList.toggle('expanded', this.isExpanded);
   }
 
   /**
-   * Expand the activity log
+   * Expand the Advanced section
    */
   expand(): void {
     this.isExpanded = true;
-    this.container.classList.remove('collapsed');
-    this.toggleBtn?.classList.add('expanded');
+    this.advancedContent?.classList.remove('collapsed');
+    this.advancedToggleBtn?.classList.add('expanded');
   }
 
   /**
-   * Collapse the activity log
+   * Collapse the Advanced section
    */
   collapse(): void {
     this.isExpanded = false;
-    this.container.classList.add('collapsed');
-    this.toggleBtn?.classList.remove('expanded');
+    this.advancedContent?.classList.add('collapsed');
+    this.advancedToggleBtn?.classList.remove('expanded');
   }
 
   /**
