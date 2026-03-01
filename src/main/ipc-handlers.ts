@@ -6,6 +6,7 @@ import { ipcMain, BrowserWindow } from 'electron';
 import { BluetoothDeviceManager } from './bluetooth-device-manager';
 import { BluetoothBroadcaster, BroadcasterStatus } from './bluetooth-broadcaster';
 import { FtmsOutput } from '../shared/types/fitness-data';
+import { startPowerSaveBlocker, stopPowerSaveBlocker } from './power-manager';
 
 export function setupIpcHandlers(
   deviceManager: BluetoothDeviceManager,
@@ -29,10 +30,12 @@ export function setupIpcHandlers(
   // Broadcaster controls
   ipcMain.on('broadcaster-start', () => {
     broadcaster.start();
+    startPowerSaveBlocker();
   });
 
   ipcMain.on('broadcaster-stop', () => {
     broadcaster.stop();
+    stopPowerSaveBlocker();
   });
 
   ipcMain.on('broadcaster-send-data', (_event, data: FtmsOutput) => {
