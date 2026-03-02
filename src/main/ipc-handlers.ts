@@ -6,6 +6,8 @@ import { ipcMain, BrowserWindow } from 'electron';
 import { BluetoothDeviceManager } from './bluetooth-device-manager';
 import { BluetoothBroadcaster, BroadcasterStatus } from './bluetooth-broadcaster';
 import { FtmsOutput } from '../shared/types/fitness-data';
+import { startPowerSaveBlocker, stopPowerSaveBlocker } from './power-manager';
+import { saveLastDevice, loadLastDevice, clearLastDevice, PersistedDevice } from './device-persistence';
 
 export function setupIpcHandlers(
   deviceManager: BluetoothDeviceManager,
@@ -28,11 +30,15 @@ export function setupIpcHandlers(
 
   // Broadcaster controls
   ipcMain.on('broadcaster-start', () => {
+    console.log('[IPC] broadcaster-start received');
     broadcaster.start();
+    startPowerSaveBlocker();
   });
 
   ipcMain.on('broadcaster-stop', () => {
+    console.log('[IPC] broadcaster-stop received');
     broadcaster.stop();
+    stopPowerSaveBlocker();
   });
 
   ipcMain.on('broadcaster-send-data', (_event, data: FtmsOutput) => {
@@ -56,5 +62,22 @@ export function setupIpcHandlers(
     windows.forEach((win) => {
       win.webContents.send('broadcaster-log', message);
     });
+  });
+
+  // Device persistence handlers
+  ipcMain.on('save-last-device', (_event, device: { id: string; name: string }) => {
+    console.log('[IPC] Received save-last-device:', device);
+    saveLastDevice(device);
+  });
+
+  ipcMain.handle('load-last-device', (): PersistedDevice | null => {
+    console.log('[IPC] Renderer requested load-last-device');
+    const device = loadLastDevice();
+    console.log('[IPC] Returning saved device:', device);
+    return device;
+  });
+
+  ipcMain.on('clear-last-device', () => {
+    clearLastDevice();
   });
 }

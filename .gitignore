@@ -125,6 +125,8 @@ pip-delete-this-directory.txt
 FTMSBluetoothForwarder/bin/
 FTMSBluetoothForwarder/obj/
 *.user
+resources/FTMSBluetoothForwarder.pdb
+resources/FTMSBluetoothForwarder.exe
 
 # Apple certificates — never commit these
 *.cer

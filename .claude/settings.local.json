@@ -5,6 +5,7 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(python3:*)",
       "Bash(grep:*)",
+      "Bash(gh issue view:*)"
       "WebFetch(domain:www.npmjs.com)",
       "WebFetch(domain:github.com)",
       "Bash(find:*)",

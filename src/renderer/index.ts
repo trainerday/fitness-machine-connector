@@ -36,6 +36,18 @@ let pendingBluetoothDevice: BluetoothDevice | null = null;
 /** Tracks if we're waiting for scan results (prevents showing list after selection) */
 let awaitingScanResults = false;
 
+/** Tracks if we're in auto-reconnect mode (silent scan, no UI) */
+let autoReconnectMode = false;
+
+/** The device name we're trying to auto-reconnect to */
+let autoReconnectDeviceName: string | null = null;
+
+/** Latest fitness data, updated on every BLE event but only consumed once per second */
+let latestFitnessData: FitnessData | null = null;
+
+/** Interval handle for the 1-second update loop (display + broadcast) */
+let updateInterval: ReturnType<typeof setInterval> | null = null;
+
 // =============================================================================
 // UI COMPONENTS
 // =============================================================================
@@ -76,12 +88,20 @@ function checkBluetoothAvailability(): boolean {
 /**
  * Handle scan button click.
  * Initiates device scanning and connection flow.
+ * Can be clicked anytime to restart scanning.
  */
 async function handleScan(): Promise<void> {
-  activityLog.log('Scanning for Bluetooth devices (3 seconds)...');
+  // If user manually clicks scan, exit auto-reconnect mode
+  if (!autoReconnectMode) {
+    activityLog.log('Scanning for Bluetooth devices...');
+  }
 
-  statusIndicator.setScanning(true);
-  deviceList.hide();
+  // Clear previous results and show scanning state (unless in auto-reconnect mode)
+  deviceList.clear();
+  if (!autoReconnectMode) {
+    deviceList.setScanning(true);
+    statusIndicator.setScanning(true);
+  }
   awaitingScanResults = true;
 
   // Tell main process to start fresh scan
@@ -93,13 +113,23 @@ async function handleScan(): Promise<void> {
     pendingBluetoothDevice = await fitnessReader.scanForDevices();
 
     if (pendingBluetoothDevice) {
+      deviceList.setScanning(false);
+      statusIndicator.setScanning(false);
       activityLog.log(`Connecting to ${pendingBluetoothDevice.name || 'Unknown'}...`);
       await connectToDevice(pendingBluetoothDevice);
+    } else if (autoReconnectMode) {
+      // Scan completed without finding the auto-reconnect target
+      activityLog.log(`Could not find ${autoReconnectDeviceName} - device may be off or out of range`);
+      autoReconnectMode = false;
+      autoReconnectDeviceName = null;
     }
   } catch (error) {
     activityLog.log(`Scan error: ${(error as Error).message}`);
-  } finally {
+    deviceList.setScanning(false);
     statusIndicator.setScanning(false);
+    // Reset auto-reconnect state on error
+    autoReconnectMode = false;
+    autoReconnectDeviceName = null;
   }
 }
 
@@ -116,6 +146,8 @@ function handleDeviceSelection(deviceId: string, deviceName: string): void {
 
   // Stop listening for scan results
   awaitingScanResults = false;
+  deviceList.setScanning(false);
+  statusIndicator.setScanning(false);
 
   // Tell main process which device was selected
   if (window.electronAPI) {
@@ -147,9 +179,16 @@ async function connectToDevice(device: BluetoothDevice): Promise<void> {
 
 /**
  * Handle disconnect button click.
+ * Clears saved device since user explicitly chose to disconnect.
  */
 async function handleDisconnect(): Promise<void> {
   activityLog.log('Disconnecting...');
+
+  // Clear saved device - user explicitly disconnected
+  if (window.electronAPI) {
+    window.electronAPI.clearLastDevice();
+  }
+
   await fitnessReader.disconnect();
   activityLog.log('Disconnected');
   statusIndicator.setDisconnected();
@@ -168,9 +207,6 @@ function convertToFtmsOutput(data: FitnessData): FtmsOutput {
     power: data.power ?? 0,
     cadence: data.cadence ?? 0,
     heartRate: data.heartRate,
-    distance: data.distance ? Math.round(data.distance * 1000) : undefined, // Convert km to meters
-    calories: data.calories,
-    elapsedTime: data.duration,
   };
 }
 
@@ -178,53 +214,90 @@ function convertToFtmsOutput(data: FitnessData): FtmsOutput {
  * Set up callbacks for fitness data and connection changes.
  */
 function setupFitnessReaderCallbacks(): void {
-  // When fitness data arrives, update the display and forward to broadcaster
+  // When fitness data arrives, merge into stored values.
+  // Different characteristics (FTMS, HR, etc.) fire independently,
+  // so we merge to keep all fields up to date.
+  // The 1-second interval handles both display and broadcasting.
   fitnessReader.onFitnessData((data) => {
-    dataDisplay.update(data);
-
-    // Forward data to the broadcaster if it's running
-    if (window.electronAPI && statusIndicator.getIsBroadcasting()) {
-      const ftmsOutput = convertToFtmsOutput(data);
-      // Debug: log HR being sent
-      if (ftmsOutput.heartRate !== undefined) {
-        console.log(`[DEBUG] Sending HR to broadcaster: ${ftmsOutput.heartRate}`);
-      }
-      window.electronAPI.broadcasterSendData(ftmsOutput);
-    }
+    latestFitnessData = { ...latestFitnessData, ...data };
   });
 
-  // When connection status changes, update the UI
+  // When connection status changes, update the UI and manage broadcasting
   fitnessReader.onConnectionChange((connected, deviceName) => {
     if (connected && deviceName) {
       statusIndicator.setConnected(deviceName);
+      startUpdateInterval();
+
+      // Save connected device for auto-reconnection
+      const deviceInfo = fitnessReader.getConnectedDevice();
+      console.log('[Renderer] Device info for save:', deviceInfo);
+      if (window.electronAPI && deviceInfo) {
+        console.log('[Renderer] Saving device:', deviceInfo.name, deviceInfo.id);
+        window.electronAPI.saveLastDevice(deviceInfo);
+      } else {
+        console.log('[Renderer] Could not save device - electronAPI:', !!window.electronAPI, 'deviceInfo:', !!deviceInfo);
+      }
+
+      // Auto-start FTMS broadcast when device connects
+      if (window.electronAPI) {
+        activityLog.log('Starting FTMS broadcast...');
+        window.electronAPI.broadcasterStart();
+      }
     } else {
+      stopUpdateInterval();
       statusIndicator.setDisconnected();
       dataDisplay.reset();
       activityLog.log('Device disconnected');
+      // Auto-stop FTMS broadcast when device disconnects
+      if (window.electronAPI) {
+        window.electronAPI.broadcasterStop();
+      }
     }
   });
 }
 
 /**
  * Set up IPC listeners for main process communication.
- * Handles the device list display from Electron's Bluetooth scanning.
+ * Handles streaming device updates from Electron's Bluetooth scanning.
  */
 function setupIpcListeners(): void {
   if (!window.electronAPI) {
     return;
   }
 
-  window.electronAPI.onBluetoothScanComplete((devices: BluetoothDeviceInfo[]) => {
-    // Only show devices if we're still waiting for scan results
+  // Listen for devices as they're discovered (streaming)
+  window.electronAPI.onBluetoothDeviceFound((device: BluetoothDeviceInfo) => {
+    console.log(`[Scan] Device found: ${device.deviceName || 'Unknown'} (${device.deviceId})`);
+
+    // Check if this is the device we're trying to auto-reconnect to
+    if (autoReconnectMode && autoReconnectDeviceName) {
+      console.log(`[AutoReconnect] Checking: "${device.deviceName}" === "${autoReconnectDeviceName}" ?`);
+
+      if (device.deviceName === autoReconnectDeviceName) {
+        devLog(`Found ${device.deviceName}! Connecting...`);
+
+        // Reset auto-reconnect state
+        autoReconnectMode = false;
+        autoReconnectDeviceName = null;
+
+        // Auto-select this device (this will trigger connection)
+        handleDeviceSelection(device.deviceId, device.deviceName);
+        return;
+      }
+    }
+
+    // Only add devices to the list if we're waiting for scan results (not in auto-reconnect mode)
     if (!awaitingScanResults) {
+      console.log('[Scan] Ignoring device - not awaiting scan results');
       return;
     }
 
-    // Mark that we've received and displayed the results
-    awaitingScanResults = false;
+    // Don't show device list during auto-reconnect
+    if (autoReconnectMode) {
+      return;
+    }
 
-    deviceList.displayDevices(devices);
-    activityLog.log(`Found ${devices.length} device(s). Click one to connect.`);
+    deviceList.addDevice(device);
   });
 
   // Listen for broadcaster status updates
@@ -237,6 +310,27 @@ function setupIpcListeners(): void {
   window.electronAPI.onBroadcasterLog((message) => {
     activityLog.log(`Broadcaster: ${message}`);
   });
+
+  // Listen for auto-reconnect requests (from wake or startup)
+  console.log('[Renderer] Setting up onAttemptReconnect listener');
+  window.electronAPI.onAttemptReconnect(async (device) => {
+    console.log('[Renderer] Received attempt-reconnect:', device);
+
+    // Don't try to reconnect if already connected
+    if (fitnessReader.isConnected()) {
+      console.log('[Renderer] Already connected, skipping reconnect');
+      return;
+    }
+
+    // Set up auto-reconnect mode - will silently scan and connect when device is found
+    autoReconnectMode = true;
+    autoReconnectDeviceName = device.name;
+    activityLog.log(`Looking for ${device.name}...`);
+
+    // Trigger a scan - the device discovery handler will auto-connect when it finds the device
+    console.log('[Renderer] Starting silent scan for auto-reconnect');
+    handleScan();
+  });
 }
 
 // =============================================================================
@@ -244,21 +338,32 @@ function setupIpcListeners(): void {
 // =============================================================================
 
 /**
- * Handle broadcast button click - toggle broadcasting on/off
+ * Start the 1-second interval that updates the display and sends data to the broadcaster.
  */
-function handleBroadcastToggle(): void {
-  if (!window.electronAPI) {
-    activityLog.log('ERROR: Electron API not available');
-    return;
-  }
+function startUpdateInterval(): void {
+  stopUpdateInterval();
+  updateInterval = setInterval(() => {
+    if (!latestFitnessData) return;
 
-  if (statusIndicator.getIsBroadcasting()) {
-    activityLog.log('Stopping FTMS broadcast...');
-    window.electronAPI.broadcasterStop();
-  } else {
-    activityLog.log('Starting FTMS broadcast...');
-    window.electronAPI.broadcasterStart();
+    // Update display once per second
+    dataDisplay.update(latestFitnessData);
+
+    // Forward to broadcaster if broadcasting
+    if (window.electronAPI && statusIndicator.getIsBroadcasting()) {
+      window.electronAPI.broadcasterSendData(convertToFtmsOutput(latestFitnessData));
+    }
+  }, 1000);
+}
+
+/**
+ * Stop the update interval and clear stored data.
+ */
+function stopUpdateInterval(): void {
+  if (updateInterval) {
+    clearInterval(updateInterval);
+    updateInterval = null;
   }
+  latestFitnessData = null;
 }
 
 // =============================================================================
@@ -269,7 +374,7 @@ function handleBroadcastToggle(): void {
  * Initialize the application.
  * Sets up UI components, callbacks, and event listeners.
  */
-function init(): void {
+async function init(): Promise<void> {
   // Initialize UI components
   activityLog = new ActivityLog('log');
   dataDisplay = new DataDisplay();
@@ -286,7 +391,6 @@ function init(): void {
   // Set up UI event handlers
   statusIndicator.onScanClick(handleScan);
   statusIndicator.onDisconnectClick(handleDisconnect);
-  statusIndicator.onBroadcastClick(handleBroadcastToggle);
   deviceList.onSelect(handleDeviceSelection);
 
   // Set up fitness reader callbacks
@@ -295,7 +399,61 @@ function init(): void {
   // Set up IPC listeners for Electron
   setupIpcListeners();
 
+  // Note: Auto-reconnect is handled by the main process
+  // It triggers requestDevice() via executeJavaScript which bypasses gesture requirement
+
   activityLog.log('Ready. Click "Scan for Devices" to find fitness equipment.');
+}
+
+/**
+ * Log to both console and activity log for easier debugging
+ */
+function devLog(message: string, data?: unknown): void {
+  if (data !== undefined) {
+    console.log(`[AutoReconnect] ${message}`, data);
+  } else {
+    console.log(`[AutoReconnect] ${message}`);
+  }
+  // Only log to activity log if it's initialized
+  if (activityLog) {
+    activityLog.log(message);
+  }
+}
+
+/**
+ * Check for a previously saved device and attempt automatic reconnection.
+ * Uses navigator.bluetooth.getDevices() which returns previously permitted devices.
+ */
+async function checkForAutoReconnect(): Promise<void> {
+  if (!window.electronAPI) {
+    devLog('No electronAPI available');
+    return;
+  }
+
+  try {
+    devLog('Checking for saved device...');
+    const savedDevice = await window.electronAPI.loadLastDevice();
+
+    if (!savedDevice) {
+      devLog('No saved device found');
+      return;
+    }
+
+    devLog(`Found saved device: ${savedDevice.name}`);
+    devLog('Attempting automatic reconnection...');
+
+    // Try to reconnect using getDevices() - no user gesture required
+    const success = await fitnessReader.reconnect(savedDevice.name);
+
+    if (success) {
+      devLog(`Successfully reconnected to ${savedDevice.name}`);
+    } else {
+      devLog(`Could not auto-reconnect to ${savedDevice.name} - device may be off or out of range`);
+    }
+  } catch (error) {
+    devLog(`Error during auto-reconnect: ${(error as Error).message}`);
+    console.error('[AutoReconnect] Full error:', error);
+  }
 }
 
 // =============================================================================

@@ -1,0 +1,46 @@
+{
+  "id": "echelon",
+  "name": "Echelon Bike",
+  "description": "Echelon indoor bike proprietary format. Reference: https://github.com/UCF-SDTeam13/echelon-bike",
+
+  "serviceUuid": "0bf669f0-45f2-11e7-9598-0800200c9a66",
+  "characteristicUuid": "0bf669f4-45f2-11e7-9598-0800200c9a66",
+
+  "minLength": 4,
+
+  "fields": [
+    {
+      "name": "resistance",
+      "offset": 3,
+      "type": "uint8",
+      "comment": "Resistance level 0-32"
+    },
+    {
+      "name": "cadence",
+      "offset": 9,
+      "type": "uint16",
+      "endian": "big",
+      "comment": "Cadence in RPM (big-endian)"
+    },
+    {
+      "name": "heartRate",
+      "offset": 11,
+      "type": "uint8",
+      "condition": {
+        "min": 1,
+        "max": 250
+      },
+      "comment": "Heart rate from connected HR strap (if available)"
+    }
+  ],
+
+  "computed": [
+    {
+      "name": "power",
+      "operation": "multiply",
+      "operands": ["cadence", "resistance"],
+      "factor": 0.15,
+      "comment": "Estimated power - Echelon doesn't report power directly"
+    }
+  ]
+}

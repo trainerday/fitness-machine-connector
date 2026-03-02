@@ -7,13 +7,13 @@
   "private": true,
   "scripts": {
     "start": "electron-forge start",
-    "package": "electron-forge package",
-    "make": "electron-forge make",
+    "package": "npm run ftms:build && electron-forge package",
+    "make": "npm run ftms:build && electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "ftms:build:win": "dotnet publish FTMSBluetoothForwarder/FTMSBluetoothForwarder.csproj -c Release -r win-x64 -o resources",
+    "ftms:build:mac": "dotnet publish FTMSBluetoothForwarder/FTMSBluetoothForwarder.csproj -c Release -r osx-x64 -o resources",
     "ftms:build": "npm run ftms:build:win",
-    "build:all": "npm run ftms:build && npm run make",
     "test:mock": "electron test-mock/"
   },
   "keywords": [],

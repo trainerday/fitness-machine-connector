@@ -1,0 +1,20 @@
+{
+  "id": "cycling-power",
+  "name": "Cycling Power Meter",
+  "description": "Standard Bluetooth Cycling Power Service (0x1818)",
+
+  "serviceUuid": "0x1818",
+  "characteristicUuid": "0x2a63",
+
+  "minLength": 4,
+
+  "fields": [
+    {
+      "name": "power",
+      "offset": 2,
+      "type": "int16",
+      "endian": "little",
+      "comment": "Instantaneous power in watts (always present at bytes 2-3)"
+    }
+  ]
+}

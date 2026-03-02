@@ -1,0 +1,114 @@
+{
+  "id": "ftms-indoor-bike",
+  "name": "FTMS Indoor Bike",
+  "description": "Standard Bluetooth Fitness Machine Service - Indoor Bike Data (0x1826/0x2AD2)",
+
+  "serviceUuid": "0x1826",
+  "characteristicUuid": "0x2ad2",
+
+  "minLength": 2,
+
+  "mode": "dynamic",
+  "flagOffset": 0,
+  "flagSize": 2,
+
+  "dynamicFields": [
+    {
+      "name": "speed",
+      "type": "uint16",
+      "flagBit": 0,
+      "flagInverted": true,
+      "divisor": 100,
+      "comment": "Instantaneous speed in km/h. Bit 0 = 0 means PRESENT (inverted)"
+    },
+    {
+      "name": "_avgSpeed",
+      "type": "uint16",
+      "flagBit": 1,
+      "skip": true,
+      "comment": "Average speed - skip, we only want instantaneous"
+    },
+    {
+      "name": "cadence",
+      "type": "uint16",
+      "flagBit": 2,
+      "divisor": 2,
+      "comment": "Instantaneous cadence in RPM (resolution 0.5)"
+    },
+    {
+      "name": "_avgCadence",
+      "type": "uint16",
+      "flagBit": 3,
+      "skip": true,
+      "comment": "Average cadence - skip"
+    },
+    {
+      "name": "distance",
+      "type": "uint24",
+      "flagBit": 4,
+      "divisor": 1000,
+      "comment": "Total distance in km (raw is meters)"
+    },
+    {
+      "name": "resistance",
+      "type": "int16",
+      "flagBit": 5,
+      "divisor": 10,
+      "comment": "Resistance level (resolution 0.1)"
+    },
+    {
+      "name": "power",
+      "type": "int16",
+      "flagBit": 6,
+      "comment": "Instantaneous power in watts"
+    },
+    {
+      "name": "_avgPower",
+      "type": "int16",
+      "flagBit": 7,
+      "skip": true,
+      "comment": "Average power - skip"
+    },
+    {
+      "name": "calories",
+      "type": "uint16",
+      "flagBit": 8,
+      "comment": "Total energy in kcal"
+    },
+    {
+      "name": "_energyPerHour",
+      "type": "uint16",
+      "flagBit": 8,
+      "skip": true,
+      "linkedToPrevious": true,
+      "comment": "Energy per hour - part of expended energy field group"
+    },
+    {
+      "name": "_energyPerMinute",
+      "type": "uint8",
+      "flagBit": 8,
+      "skip": true,
+      "linkedToPrevious": true,
+      "comment": "Energy per minute - part of expended energy field group"
+    },
+    {
+      "name": "heartRate",
+      "type": "uint8",
+      "flagBit": 9,
+      "comment": "Heart rate in BPM"
+    },
+    {
+      "name": "_metabolicEquivalent",
+      "type": "uint8",
+      "flagBit": 10,
+      "skip": true,
+      "comment": "Metabolic equivalent - skip"
+    },
+    {
+      "name": "duration",
+      "type": "uint16",
+      "flagBit": 11,
+      "comment": "Elapsed time in seconds"
+    }
+  ]
+}

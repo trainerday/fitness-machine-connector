@@ -1,0 +1,80 @@
+{
+  "id": "keiser-m3i",
+  "name": "Keiser M3i",
+  "description": "Keiser M3i indoor bike proprietary format. Reference: https://dev.keiser.com/mseries/direct/",
+
+  "serviceUuid": "0x0001",
+  "characteristicUuid": "0x0002",
+
+  "minLength": 12,
+
+  "validation": {
+    "magicBytes": [
+      { "offset": 0, "value": 2 },
+      { "offset": 1, "value": 1 }
+    ],
+    "versionCheck": {
+      "offset": 2,
+      "value": 6,
+      "comment": "Version major must be 6 for M3i"
+    }
+  },
+
+  "fields": [
+    {
+      "name": "cadence",
+      "offset": 6,
+      "type": "uint16",
+      "endian": "little",
+      "divisor": 10,
+      "comment": "Cadence in RPM (raw value / 10)"
+    },
+    {
+      "name": "heartRate",
+      "offset": 8,
+      "type": "uint16",
+      "endian": "little",
+      "divisor": 10,
+      "condition": {
+        "min": 1
+      },
+      "comment": "Heart rate in BPM (raw value / 10)"
+    },
+    {
+      "name": "power",
+      "offset": 10,
+      "type": "uint16",
+      "endian": "little",
+      "comment": "Power in watts"
+    },
+    {
+      "name": "calories",
+      "offset": 12,
+      "type": "uint16",
+      "endian": "little",
+      "comment": "Total calories in kcal"
+    },
+    {
+      "name": "duration",
+      "offset": 14,
+      "type": "uint16",
+      "endian": "little",
+      "comment": "Duration in seconds"
+    },
+    {
+      "name": "distance",
+      "offset": 16,
+      "type": "uint16",
+      "endian": "little",
+      "divisor": 10,
+      "multiplier": 1.60934,
+      "comment": "Distance - raw is miles/10, convert to km"
+    },
+    {
+      "name": "gear",
+      "offset": 18,
+      "type": "uint8",
+      "comment": "Gear level 1-24"
+    }
+  ]
+}

@@ -16,8 +16,8 @@ export interface FitnessData {
   gear?: number;         // Gear level (1-24 for Keiser)
   resistance?: number;   // Resistance level
 
-  // Device info
-  sourceType?: 'ftms' | 'keiser-m3i' | 'cycling-power' | 'heart-rate';
+  // Device info - matches the 'id' field in device spec JSON files
+  sourceType?: 'ftms-indoor-bike' | 'keiser-m3i' | 'cycling-power' | 'heart-rate' | 'echelon' | string;
 }
 
 /**
@@ -26,14 +26,8 @@ export interface FitnessData {
  * Based on Bluetooth FTMS Indoor Bike Data characteristic (0x2AD2).
  */
 export interface FtmsOutput {
-  // Core fields (what apps actually use)
   power: number;         // Watts (signed 16-bit in FTMS)
   cadence: number;       // RPM (0.5 resolution in FTMS)
   heartRate?: number;    // BPM
   speed?: number;        // km/h (0.01 resolution in FTMS)
-
-  // Additional fields (passed through from device if available)
-  distance?: number;     // meters (cumulative, 24-bit in FTMS)
-  calories?: number;     // kcal (Total Energy)
-  elapsedTime?: number;  // seconds
 }

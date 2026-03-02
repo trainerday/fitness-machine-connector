@@ -14,7 +14,6 @@ export class StatusIndicator {
   private ftmsStatus: HTMLSpanElement;
   private scanBtn: HTMLButtonElement;
   private disconnectBtn: HTMLButtonElement;
-  private broadcastBtn: HTMLButtonElement;
   private isBroadcasting = false;
 
   constructor() {
@@ -22,7 +21,6 @@ export class StatusIndicator {
     this.ftmsStatus = this.getElement('ftms-status') as HTMLSpanElement;
     this.scanBtn = this.getElement('scan-btn') as HTMLButtonElement;
     this.disconnectBtn = this.getElement('disconnect-btn') as HTMLButtonElement;
-    this.broadcastBtn = this.getElement('broadcast-btn') as HTMLButtonElement;
   }
 
   private getElement(id: string): HTMLElement {
@@ -56,11 +54,10 @@ export class StatusIndicator {
   }
 
   /**
-   * Set scanning state
+   * Set scanning state - button stays enabled so user can re-scan anytime
    */
   setScanning(isScanning: boolean): void {
-    this.scanBtn.disabled = isScanning;
-    this.scanBtn.textContent = isScanning ? 'Scanning...' : 'Scan for Devices';
+    this.scanBtn.textContent = isScanning ? 'Rescan' : 'Scan for Devices';
   }
 
   /**
@@ -81,12 +78,8 @@ export class StatusIndicator {
     this.disconnectBtn.addEventListener('click', handler);
   }
 
-  onBroadcastClick(handler: () => void): void {
-    this.broadcastBtn.addEventListener('click', handler);
-  }
-
   /**
-   * Update broadcast button and FTMS status based on broadcaster state
+   * Update FTMS status display based on broadcaster state
    */
   setBroadcasterStatus(status: BroadcasterStatus): void {
     switch (status.state) {
@@ -94,8 +87,6 @@ export class StatusIndicator {
         this.ftmsStatus.textContent = 'Inactive';
         this.ftmsStatus.classList.remove('connected', 'warning');
         this.ftmsStatus.classList.add('disconnected');
-        this.broadcastBtn.textContent = 'Start Broadcast';
-        this.broadcastBtn.disabled = false;
         this.isBroadcasting = false;
         break;
 
@@ -103,16 +94,12 @@ export class StatusIndicator {
         this.ftmsStatus.textContent = 'Starting...';
         this.ftmsStatus.classList.remove('connected', 'disconnected');
         this.ftmsStatus.classList.add('warning');
-        this.broadcastBtn.textContent = 'Starting...';
-        this.broadcastBtn.disabled = true;
         break;
 
       case 'advertising':
         this.ftmsStatus.textContent = 'Broadcasting';
         this.ftmsStatus.classList.remove('disconnected', 'warning');
         this.ftmsStatus.classList.add('connected');
-        this.broadcastBtn.textContent = 'Stop Broadcast';
-        this.broadcastBtn.disabled = false;
         this.isBroadcasting = true;
         break;
 
@@ -120,8 +107,6 @@ export class StatusIndicator {
         this.ftmsStatus.textContent = `Connected: ${status.clientAddress || 'Client'}`;
         this.ftmsStatus.classList.remove('disconnected', 'warning');
         this.ftmsStatus.classList.add('connected');
-        this.broadcastBtn.textContent = 'Stop Broadcast';
-        this.broadcastBtn.disabled = false;
         this.isBroadcasting = true;
         break;
 
@@ -129,8 +114,6 @@ export class StatusIndicator {
         this.ftmsStatus.textContent = `Error: ${status.error || 'Unknown'}`;
         this.ftmsStatus.classList.remove('connected', 'warning');
         this.ftmsStatus.classList.add('disconnected');
-        this.broadcastBtn.textContent = 'Start Broadcast';
-        this.broadcastBtn.disabled = false;
         this.isBroadcasting = false;
         break;
     }

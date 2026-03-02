@@ -2,24 +2,26 @@
  * Manages Bluetooth device discovery and selection in the main process
  */
 
-const SCAN_DURATION_MS = 3000;
-
 export class BluetoothDeviceManager {
   private devices: Map<string, Electron.BluetoothDevice> = new Map();
   private selectCallback: ((deviceId: string) => void) | null = null;
-  private scanTimeout: NodeJS.Timeout | null = null;
-  private onScanComplete: ((devices: Electron.BluetoothDevice[]) => void) | null = null;
-  private scanListSent = false; // Tracks if we've already sent the device list
+  private onDeviceFound: ((device: Electron.BluetoothDevice) => void) | null = null;
+  private isScanning = false;
+
+  // Auto-reconnect state
+  private autoReconnectDeviceName: string | null = null;
+  private autoReconnectCallback: ((success: boolean, deviceId?: string) => void) | null = null;
 
   /**
-   * Set callback to be called when scan completes
+   * Set callback to be called when a new device is discovered
    */
-  setOnScanComplete(callback: (devices: Electron.BluetoothDevice[]) => void): void {
-    this.onScanComplete = callback;
+  setOnDeviceFound(callback: (device: Electron.BluetoothDevice) => void): void {
+    this.onDeviceFound = callback;
   }
 
   /**
    * Handle incoming device from Electron's select-bluetooth-device event
+   * Streams devices to the renderer as they're discovered
    */
   handleDeviceDiscovered(
     devices: Electron.BluetoothDevice[],
@@ -27,49 +29,68 @@ export class BluetoothDeviceManager {
   ): void {
     // Store the callback for later use when user selects a device
     this.selectCallback = callback;
+    this.isScanning = true;
 
-    // Don't accumulate or start timers if we've already sent the list
-    if (this.scanListSent) {
-      return;
-    }
-
-    // Accumulate devices (use Map to deduplicate by deviceId)
+    // Stream new devices as they're discovered
     devices.forEach((device) => {
       if (!this.devices.has(device.deviceId)) {
         console.log(`[BluetoothDeviceManager] New device: ${device.deviceName || 'Unknown'} (${device.deviceId})`);
         this.devices.set(device.deviceId, device);
+
+        // Check for auto-reconnect match
+        if (this.autoReconnectDeviceName && device.deviceName === this.autoReconnectDeviceName) {
+          console.log(`[BluetoothDeviceManager] Auto-reconnect: Found target device "${device.deviceName}"`);
+          this.autoSelectDevice(device.deviceId);
+          return;
+        }
+
+        // Immediately notify renderer of new device
+        if (this.onDeviceFound) {
+          this.onDeviceFound(device);
+        }
       }
     });
-
-    // Start the scan timeout if not already started
-    if (!this.scanTimeout) {
-      console.log(`[BluetoothDeviceManager] Starting ${SCAN_DURATION_MS}ms scan timer...`);
-      this.scanTimeout = setTimeout(() => {
-        this.completeScan();
-      }, SCAN_DURATION_MS);
-    }
   }
 
   /**
-   * Complete the scan and notify listeners
+   * Auto-select a device (for auto-reconnect)
    */
-  private completeScan(): void {
-    // Don't send if already sent
-    if (this.scanListSent) {
-      this.scanTimeout = null;
-      return;
+  private autoSelectDevice(deviceId: string): void {
+    console.log(`[BluetoothDeviceManager] Auto-selecting device: ${deviceId}`);
+
+    if (this.selectCallback) {
+      this.selectCallback(deviceId);
+      this.selectCallback = null;
     }
 
-    console.log(`[BluetoothDeviceManager] Scan complete. Found ${this.devices.size} devices.`);
-
-    const deviceList = Array.from(this.devices.values());
-    this.scanListSent = true;
-
-    if (this.onScanComplete) {
-      this.onScanComplete(deviceList);
+    if (this.autoReconnectCallback) {
+      this.autoReconnectCallback(true, deviceId);
+      this.autoReconnectCallback = null;
     }
 
-    this.scanTimeout = null;
+    this.autoReconnectDeviceName = null;
+    this.devices.clear();
+    this.isScanning = false;
+  }
+
+  /**
+   * Set up auto-reconnect mode - will auto-select device with matching name
+   */
+  setAutoReconnect(deviceName: string, callback: (success: boolean, deviceId?: string) => void): void {
+    console.log(`[BluetoothDeviceManager] Setting up auto-reconnect for: ${deviceName}`);
+    this.autoReconnectDeviceName = deviceName;
+    this.autoReconnectCallback = callback;
+  }
+
+  /**
+   * Clear auto-reconnect mode
+   */
+  clearAutoReconnect(): void {
+    this.autoReconnectDeviceName = null;
+    if (this.autoReconnectCallback) {
+      this.autoReconnectCallback(false);
+      this.autoReconnectCallback = null;
+    }
   }
 
   /**
@@ -78,12 +99,6 @@ export class BluetoothDeviceManager {
   selectDevice(deviceId: string): void {
     console.log(`[BluetoothDeviceManager] User selected device: ${deviceId}`);
 
-    // Clear any pending timeout
-    if (this.scanTimeout) {
-      clearTimeout(this.scanTimeout);
-      this.scanTimeout = null;
-    }
-
     if (this.selectCallback) {
       this.selectCallback(deviceId);
       this.selectCallback = null;
@@ -91,7 +106,7 @@ export class BluetoothDeviceManager {
 
     // Clear state after selection
     this.devices.clear();
-    this.scanListSent = false;
+    this.isScanning = false;
   }
 
   /**
@@ -109,7 +124,7 @@ export class BluetoothDeviceManager {
   }
 
   /**
-   * Reset for a new scan
+   * Reset for a new scan - clears device list for fresh discovery
    */
   startNewScan(): void {
     console.log('[BluetoothDeviceManager] New scan requested, clearing previous devices');
@@ -117,15 +132,17 @@ export class BluetoothDeviceManager {
   }
 
   /**
+   * Check if currently scanning
+   */
+  getIsScanning(): boolean {
+    return this.isScanning;
+  }
+
+  /**
    * Clear all scan-related state
    */
   private clearScanState(): void {
     this.devices.clear();
-    this.scanListSent = false;
-
-    if (this.scanTimeout) {
-      clearTimeout(this.scanTimeout);
-      this.scanTimeout = null;
-    }
+    this.isScanning = false;
   }
 }

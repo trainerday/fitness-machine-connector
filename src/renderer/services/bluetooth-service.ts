@@ -27,12 +27,17 @@
  */
 
 /**
+ * UUID type - supports both 16-bit (number) and 128-bit (string) UUIDs.
+ */
+export type BluetoothUuid = number | string;
+
+/**
  * Configuration for a characteristic to subscribe to.
  * Just UUIDs - no interpretation of what they mean.
  */
 export interface CharacteristicSubscription {
-  serviceUuid: number;
-  characteristicUuid: number;
+  serviceUuid: BluetoothUuid;
+  characteristicUuid: BluetoothUuid;
 }
 
 /**
@@ -40,7 +45,7 @@ export interface CharacteristicSubscription {
  * Contains the characteristic UUID and raw bytes - no interpretation.
  */
 export interface RawBluetoothData {
-  characteristicUuid: number;
+  characteristicUuid: BluetoothUuid;
   rawValue: DataView;
 }
 
@@ -99,9 +104,9 @@ class BluetoothService {
    * Scan for available Bluetooth devices.
    * Returns the selected device or null if cancelled.
    *
-   * @param serviceUuids - List of service UUIDs to filter/allow access to
+   * @param serviceUuids - List of service UUIDs to filter/allow access to (16-bit or 128-bit)
    */
-  async scanForDevices(serviceUuids: number[]): Promise<BluetoothDevice | null> {
+  async scanForDevices(serviceUuids: BluetoothUuid[]): Promise<BluetoothDevice | null> {
     if (!this.isAvailable()) {
       throw new Error('Web Bluetooth is not available');
     }
@@ -157,6 +162,64 @@ class BluetoothService {
   }
 
   /**
+   * Attempt to reconnect to a previously paired device by name.
+   * Uses navigator.bluetooth.getDevices() which doesn't require user interaction.
+   * We match by name because Web Bluetooth device IDs can change between sessions.
+   * Returns true if reconnection successful, false otherwise.
+   */
+  async reconnectToDevice(deviceName: string): Promise<boolean> {
+    if (!this.isAvailable()) {
+      console.log('[BluetoothService] Bluetooth not available for reconnect');
+      return false;
+    }
+
+    try {
+      console.log('[BluetoothService] Calling navigator.bluetooth.getDevices()...');
+
+      // getDevices() returns previously permitted devices without user interaction
+      const devices = await navigator.bluetooth.getDevices();
+      console.log(`[BluetoothService] getDevices() returned ${devices.length} device(s)`);
+
+      if (devices.length === 0) {
+        console.log('[BluetoothService] No previously permitted devices found');
+        return false;
+      }
+
+      devices.forEach((d) => console.log(`[BluetoothService]   - "${d.name}" (${d.id})`));
+
+      // Match by name since device IDs change between sessions
+      const device = devices.find((d) => d.name === deviceName);
+
+      if (!device) {
+        console.log(`[BluetoothService] Device "${deviceName}" not found in permitted devices`);
+        return false;
+      }
+
+      console.log(`[BluetoothService] Found matching device: ${device.name} (${device.id})`);
+      console.log('[BluetoothService] Attempting to connect...');
+
+      // Connect to the device
+      await this.connect(device);
+      console.log('[BluetoothService] Reconnection successful!');
+      return true;
+    } catch (error) {
+      console.error('[BluetoothService] Reconnection failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get the currently connected device info
+   */
+  getConnectedDevice(): DeviceInfo | null {
+    if (!this.connectedDevice) return null;
+    return {
+      name: this.connectedDevice.name || 'Unknown Device',
+      id: this.connectedDevice.id,
+    };
+  }
+
+  /**
    * Check if currently connected to a device.
    */
   isConnected(): boolean {
@@ -179,14 +242,18 @@ class BluetoothService {
    * Returns true if successful, false otherwise.
    */
   private async trySubscribe(
-    serviceUuid: number,
-    characteristicUuid: number
+    serviceUuid: BluetoothUuid,
+    characteristicUuid: BluetoothUuid
   ): Promise<boolean> {
     if (!this.gattServer) return false;
 
+    console.log(`[BluetoothService] Trying to subscribe: service=${serviceUuid}, char=${characteristicUuid}`);
+
     try {
       const service = await this.gattServer.getPrimaryService(serviceUuid);
+      console.log(`[BluetoothService] Got service: ${serviceUuid}`);
       const characteristic = await service.getCharacteristic(characteristicUuid);
+      console.log(`[BluetoothService] Got characteristic: ${characteristicUuid}`);
 
       characteristic.addEventListener('characteristicvaluechanged', (event) => {
         const value = (event.target as BluetoothRemoteGATTCharacteristic).value;
@@ -196,8 +263,10 @@ class BluetoothService {
       });
 
       await characteristic.startNotifications();
+      console.log(`[BluetoothService] Subscribed successfully to ${characteristicUuid}`);
       return true;
-    } catch {
+    } catch (error) {
+      console.log(`[BluetoothService] Failed to subscribe to service=${serviceUuid}, char=${characteristicUuid}:`, error);
       return false;
     }
   }
@@ -205,7 +274,7 @@ class BluetoothService {
   /**
    * Emit raw data to registered callback.
    */
-  private emitRawData(characteristicUuid: number, rawValue: DataView): void {
+  private emitRawData(characteristicUuid: BluetoothUuid, rawValue: DataView): void {
     if (this.rawDataCallback) {
       this.rawDataCallback({ characteristicUuid, rawValue });
     }
