@@ -297,6 +297,22 @@ class WindowsBroadcaster extends EventEmitter {
   }
 
   /**
+   * Start FTMS broadcasting explicitly
+   */
+  startBroadcast(): void {
+    console.log('[BLE] Sending startBroadcast command...');
+    this.sendCommand({ type: 'startBroadcast' });
+  }
+
+  /**
+   * Stop FTMS broadcasting
+   */
+  stopBroadcast(): void {
+    console.log('[BLE] Sending stopBroadcast command...');
+    this.sendCommand({ type: 'stopBroadcast' });
+  }
+
+  /**
    * Send fitness data to FTMS broadcaster (legacy - used when data comes from Web Bluetooth)
    */
   sendData(data: FtmsOutput): void {
@@ -414,6 +430,16 @@ export class BluetoothBroadcaster extends EventEmitter {
   /** Configure auto-reconnect */
   setAutoReconnect(enabled: boolean, deviceId?: string, deviceName?: string): void {
     this.backend.setAutoReconnect(enabled, deviceId, deviceName);
+  }
+
+  /** Start FTMS broadcasting explicitly */
+  startBroadcast(): void {
+    this.backend.startBroadcast();
+  }
+
+  /** Stop FTMS broadcasting */
+  stopBroadcast(): void {
+    this.backend.stopBroadcast();
   }
 
   /** Send fitness data (legacy - when data comes from Web Bluetooth) */

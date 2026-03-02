@@ -227,6 +227,37 @@ async Task HandleCommand(string line)
 
         switch (type)
         {
+            case "startBroadcast":
+                // Explicitly start FTMS broadcasting
+                if (!ftmsStarted)
+                {
+                    Log("Starting FTMS broadcast (explicit command)...");
+                    ftmsStarted = await server.StartAsync();
+                    if (ftmsStarted)
+                    {
+                        Log("FTMS broadcast started successfully");
+                    }
+                    else
+                    {
+                        Log("Failed to start FTMS server", "error");
+                    }
+                }
+                else
+                {
+                    Log("FTMS broadcast already running");
+                }
+                break;
+
+            case "stopBroadcast":
+                // Stop FTMS broadcasting
+                if (ftmsStarted)
+                {
+                    Log("Stopping FTMS broadcast...");
+                    server.Stop();
+                    ftmsStarted = false;
+                }
+                break;
+
             case "scan":
                 int duration = 10;
                 if (root.TryGetProperty("duration", out var durationEl))

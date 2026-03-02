@@ -31,13 +31,18 @@ export function setupIpcHandlers(
   // Broadcaster controls
   ipcMain.on('broadcaster-start', () => {
     console.log('[IPC] broadcaster-start received');
-    broadcaster.start();
+    // Make sure backend is running
+    if (!broadcaster.isRunning()) {
+      broadcaster.start();
+    }
+    // Start FTMS broadcasting
+    broadcaster.startBroadcast();
     startPowerSaveBlocker();
   });
 
   ipcMain.on('broadcaster-stop', () => {
     console.log('[IPC] broadcaster-stop received');
-    broadcaster.stop();
+    broadcaster.stopBroadcast();
     stopPowerSaveBlocker();
   });
 
