@@ -3,18 +3,67 @@ import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
+import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const config: ForgeConfig = {
   packagerConfig: {
-    asar: true,
+    asar: {
+      // Unpack @stoprocent so its .node binaries land in app.asar.unpacked
+      // and can be loaded by dlopen at runtime (binaries can't run from inside asar).
+      unpack: '**/node_modules/@stoprocent/**',
+    },
+    executableName: process.platform === 'linux' ? 'fitbridge' : 'FitBridge',
     extraResource: [
       // C# FTMS broadcaster executable (built with: npm run ftms:build)
       // Will be available at process.resourcesPath at runtime
       ...(process.platform === 'win32' ? ['./resources/FTMSBluetoothForwarder.exe'] : []),
     ].filter(Boolean),
+    // Vite bundles all JS deps so Forge never copies node_modules into the package.
+    // @stoprocent/bleno is a native module that can't be bundled — it must be
+    // require()d at runtime. This hook copies it in before asarification.
+    // On Windows it won't be installed (optional dep), so the hook safely skips it.
+    afterCopy: [
+      (buildPath: string, _ev: string, _pl: string, _arch: string, callback: (err?: Error | null) => void) => {
+        // Vite bundles all JS deps so node_modules is absent from the package.
+        // @stoprocent/bleno is a native module that must be require()d at runtime,
+        // so we copy it plus its runtime deps (debug, ms, node-gyp-build) manually.
+        // On Windows bleno won't be installed (optional dep) so we skip it safely.
+        const packages = ['@stoprocent', 'debug', 'ms', 'node-gyp-build'];
+        const srcRoot = path.join(__dirname, 'node_modules');
+        const destRoot = path.join(buildPath, 'node_modules');
+        fs.mkdirSync(destRoot, { recursive: true });
+        for (const pkg of packages) {
+          const src = path.join(srcRoot, pkg);
+          const dest = path.join(destRoot, pkg);
+          if (fs.existsSync(src)) {
+            fs.cpSync(src, dest, { recursive: true, dereference: true });
+          }
+        }
+        callback();
+      },
+    ],
+    // macOS code signing — uses the Developer ID certificate from the keychain.
+    // The APPLE_IDENTITY env var is set in CI; locally this is skipped.
+    ...(process.platform === 'darwin' && process.env.APPLE_IDENTITY
+      ? {
+          osxSign: {
+            identity: process.env.APPLE_IDENTITY,
+            optionsForFile: () => ({
+              entitlements: './entitlements.plist',
+            }),
+          },
+          osxNotarize: {
+            appleId: process.env.APPLE_ID!,
+            appleIdPassword: process.env.APPLE_ID_PASSWORD!,
+            teamId: process.env.APPLE_TEAM_ID!,
+          },
+        }
+      : {}),
   },
   rebuildConfig: {},
   makers: [
@@ -24,6 +73,10 @@ const config: ForgeConfig = {
     new MakerDeb({}),
   ],
   plugins: [
+    // Automatically unpacks native .node modules out of the asar archive so
+    // they can be loaded at runtime (native binaries can't run from inside asar).
+    // This is what allows @abandonware/bleno to load on macOS in production builds.
+    new AutoUnpackNativesPlugin({}),
     new VitePlugin({
       // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
       // If you are familiar with Vite configuration, it will look really familiar.

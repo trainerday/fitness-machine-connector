@@ -127,3 +127,9 @@ FTMSBluetoothForwarder/obj/
 *.user
 resources/FTMSBluetoothForwarder.pdb
 resources/FTMSBluetoothForwarder.exe
+
+# Apple certificates — never commit these
+*.cer
+*.p12
+*.csr
+*.key

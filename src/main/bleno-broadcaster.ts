@@ -9,10 +9,12 @@ import { FtmsOutput } from '../shared/types/fitness-data';
 
 // Conditionally require bleno - it's not available on Windows
 let bleno: any = null;
+let blenoLoadError: string | null = null;
 try {
-  bleno = require('@abandonware/bleno');
+  bleno = require('@stoprocent/bleno');
 } catch (e) {
-  console.log('Bleno not available on this platform');
+  blenoLoadError = String(e);
+  console.error('Bleno not available:', e);
 }
 
 // FTMS Service and Characteristic UUIDs
@@ -40,7 +42,7 @@ class IndoorBikeDataCharacteristic {
   public descriptors: any[];
 
   private _updateInterval: ReturnType<typeof setInterval> | null = null;
-  private _subscribers: ((data: Buffer) => void)[] = [];
+  private _updateValueCallbacks: Map<any, (data: Buffer) => void> = new Map();
   private _currentData: FtmsOutput = { power: 0, cadence: 0 };
   private _onSubscribe: (() => void) | null = null;
   private _onUnsubscribe: (() => void) | null = null;
@@ -56,21 +58,21 @@ class IndoorBikeDataCharacteristic {
     this._onUnsubscribe = onUnsubscribe;
   }
 
-  onSubscribe(maxValueSize: number, updateValueCallback: (data: Buffer) => void) {
+  onSubscribe(connection: any, maxValueSize: number, updateValueCallback: (data: Buffer) => void) {
     console.log('Client subscribed to Indoor Bike Data');
-    this._subscribers.push(updateValueCallback);
+    this._updateValueCallbacks.set(connection, updateValueCallback);
 
-    if (this._subscribers.length === 1) {
+    if (this._updateValueCallbacks.size === 1) {
       this._startUpdates();
       if (this._onSubscribe) this._onSubscribe();
     }
   }
 
-  onUnsubscribe() {
+  onUnsubscribe(connection: any) {
     console.log('Client unsubscribed from Indoor Bike Data');
-    this._subscribers.pop();
+    this._updateValueCallbacks.delete(connection);
 
-    if (this._subscribers.length === 0) {
+    if (this._updateValueCallbacks.size === 0) {
       this._stopUpdates();
       if (this._onUnsubscribe) this._onUnsubscribe();
     }
@@ -87,7 +89,7 @@ class IndoorBikeDataCharacteristic {
     this._updateInterval = setInterval(() => {
       const buffer = this._buildIndoorBikeData(this._currentData);
 
-      this._subscribers.forEach(callback => {
+      this._updateValueCallbacks.forEach(callback => {
         callback(buffer);
       });
     }, 250);
@@ -330,7 +332,7 @@ export class BlenoBroadcaster extends EventEmitter {
     const featureChar = new BlenoCharacteristic({
       uuid: FITNESS_MACHINE_FEATURE_UUID,
       properties: ['read'],
-      onReadRequest: (offset: number, callback: (result: number, data: Buffer | null) => void) => {
+      onReadRequest: (_connection: any, offset: number, callback: (result: number, data: Buffer | null) => void) => {
         // Features: Average Speed Supported (matching working emulator)
         const features = Buffer.alloc(8);
         features.writeUInt32LE(0x00000001, 0); // Bit 0: Average Speed Supported
@@ -342,15 +344,19 @@ export class BlenoBroadcaster extends EventEmitter {
     const controlPointChar = new BlenoCharacteristic({
       uuid: FITNESS_MACHINE_CONTROL_POINT_UUID,
       properties: ['write', 'indicate'],
-      onSubscribe: (maxValueSize: number, updateValueCallback: (data: Buffer) => void) => {
+      onSubscribe: (connection: any, maxValueSize: number, updateValueCallback: (data: Buffer) => void) => {
         console.log('Client subscribed to Control Point');
-        (controlPointChar as any)._updateValueCallback = updateValueCallback;
+        if (!(controlPointChar as any)._updateValueCallbacks) {
+          (controlPointChar as any)._updateValueCallbacks = new Map();
+        }
+        (controlPointChar as any)._updateValueCallbacks.set(connection, updateValueCallback);
       },
-      onUnsubscribe: () => {
+      onUnsubscribe: (connection: any) => {
         console.log('Client unsubscribed from Control Point');
-        (controlPointChar as any)._updateValueCallback = null;
+        (controlPointChar as any)._updateValueCallbacks?.delete(connection);
       },
       onWriteRequest: (
+        connection: any,
         data: Buffer,
         offset: number,
         withoutResponse: boolean,
@@ -362,8 +368,8 @@ export class BlenoBroadcaster extends EventEmitter {
 
           callback(BlenoCharacteristic.RESULT_SUCCESS);
 
-          // Send indication response
-          const updateCallback = (controlPointChar as any)._updateValueCallback;
+          // Send indication response back to the connection that sent the command
+          const updateCallback = (controlPointChar as any)._updateValueCallbacks?.get(connection);
           if (updateCallback) {
             const response = Buffer.alloc(3);
             response.writeUInt8(0x80, 0);
@@ -406,7 +412,7 @@ export class BlenoBroadcaster extends EventEmitter {
    */
   start(): void {
     if (!bleno) {
-      this.status = { state: 'error', error: 'Bleno not available' };
+      this.status = { state: 'error', error: `Bleno not available: ${blenoLoadError}` };
       this.emit('status', this.status);
       return;
     }
