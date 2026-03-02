@@ -57,6 +57,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send('broadcaster-stop');
   },
 
+  broadcasterDisconnect: () => {
+    ipcRenderer.send('broadcaster-disconnect');
+  },
+
   broadcasterSendData: (data: FtmsOutput) => {
     ipcRenderer.send('broadcaster-send-data', data);
   },
@@ -104,5 +108,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   removeReconnectListener: () => {
     ipcRenderer.removeAllListeners('attempt-reconnect');
+  },
+
+  // .NET backend events (bypasses Web Bluetooth limitations)
+  onDeviceConnectedViaDotnet: (callback: (device: { id: string; name: string }) => void) => {
+    ipcRenderer.on('device-connected-via-dotnet', (_event, device) => {
+      callback(device);
+    });
+  },
+
+  onFitnessDataFromDotnet: (callback: (data: { power?: number; cadence?: number; heartRate?: number; source?: string }) => void) => {
+    ipcRenderer.on('fitness-data-from-dotnet', (_event, data) => {
+      callback(data);
+    });
+  },
+
+  onAutoReconnectFailed: (callback: (info: { deviceName: string; reason: string }) => void) => {
+    ipcRenderer.on('auto-reconnect-failed', (_event, info) => {
+      callback(info);
+    });
+  },
+
+  removeDotnetListeners: () => {
+    ipcRenderer.removeAllListeners('device-connected-via-dotnet');
+    ipcRenderer.removeAllListeners('fitness-data-from-dotnet');
+    ipcRenderer.removeAllListeners('auto-reconnect-failed');
   },
 });

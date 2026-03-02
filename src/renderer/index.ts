@@ -187,9 +187,20 @@ async function handleDisconnect(): Promise<void> {
   // Clear saved device - user explicitly disconnected
   if (window.electronAPI) {
     window.electronAPI.clearLastDevice();
+
+    // Stop FTMS broadcast
+    window.electronAPI.broadcasterStop();
+
+    // Tell .NET backend to disconnect from source device
+    window.electronAPI.broadcasterDisconnect();
   }
 
+  // Stop the update interval (stops data display updates)
+  stopUpdateInterval();
+
+  // Disconnect Web Bluetooth connection (if any)
   await fitnessReader.disconnect();
+
   activityLog.log('Disconnected');
   statusIndicator.setDisconnected();
   dataDisplay.reset();
@@ -330,6 +341,43 @@ function setupIpcListeners(): void {
     // Trigger a scan - the device discovery handler will auto-connect when it finds the device
     console.log('[Renderer] Starting silent scan for auto-reconnect');
     handleScan();
+  });
+
+  // Listen for device connection from .NET backend (bypasses Web Bluetooth)
+  window.electronAPI.onDeviceConnectedViaDotnet((device) => {
+    console.log('[Renderer] Device connected via .NET:', device);
+    activityLog.log(`Connected to ${device.name} (via .NET)`);
+    statusIndicator.setConnected(device.name);
+    deviceList.hide();
+
+    // Start the update interval for display/broadcast
+    startUpdateInterval();
+
+    // Auto-reconnect was successful, clear the mode
+    autoReconnectMode = false;
+    autoReconnectDeviceName = null;
+  });
+
+  // Listen for fitness data from .NET backend
+  window.electronAPI.onFitnessDataFromDotnet((data) => {
+    // Update latest fitness data (will be consumed by update interval)
+    latestFitnessData = {
+      power: data.power ?? 0,
+      cadence: data.cadence ?? 0,
+      heartRate: data.heartRate ?? 0,
+      speed: 0,
+      distance: 0,
+      resistance: 0,
+    };
+  });
+
+  // Listen for auto-reconnect failure
+  window.electronAPI.onAutoReconnectFailed((info) => {
+    console.log('[Renderer] Auto-reconnect failed:', info);
+    activityLog.log(`Auto-reconnect failed: ${info.reason}`);
+
+    // Show alert to user
+    alert(`Could not reconnect to "${info.deviceName}"\n\n${info.reason}\n\nClick "Scan for Devices" to connect manually.`);
   });
 }
 
