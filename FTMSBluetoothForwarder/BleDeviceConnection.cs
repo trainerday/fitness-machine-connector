@@ -15,6 +15,7 @@ namespace FTMSBluetoothForwarder
         private BluetoothLEDevice? _device;
         private readonly List<GattCharacteristic> _subscribedCharacteristics = new();
         private bool _disposed;
+        private string? _advertisedName; // Store the name from scan advertisement
 
         // Known characteristic UUIDs for fitness devices
         private static readonly Guid FtmsIndoorBikeDataUuid = Guid.Parse("00002ad2-0000-1000-8000-00805f9b34fb");
@@ -35,16 +36,21 @@ namespace FTMSBluetoothForwarder
         public event Action<string>? OnLog;
 
         public bool IsConnected => _device?.ConnectionStatus == BluetoothConnectionStatus.Connected;
-        public string? ConnectedDeviceName => _device?.Name;
+        public string? ConnectedDeviceName => _advertisedName ?? _device?.Name; // Prefer advertised name
         public string? ConnectedDeviceId => _device?.BluetoothAddress.ToString("X12");
 
         /// <summary>
         /// Connect to a BLE device by its address.
         /// </summary>
-        public async Task<bool> ConnectAsync(string deviceAddress)
+        /// <param name="deviceAddress">Hex address of the device</param>
+        /// <param name="advertisedName">Optional: the name from scan advertisement (preferred over system name)</param>
+        public async Task<bool> ConnectAsync(string deviceAddress, string? advertisedName = null)
         {
             try
             {
+                // Store the advertised name if provided
+                _advertisedName = advertisedName;
+
                 // Parse the address (hex string to ulong)
                 if (!ulong.TryParse(deviceAddress, System.Globalization.NumberStyles.HexNumber, null, out ulong address))
                 {
@@ -63,7 +69,7 @@ namespace FTMSBluetoothForwarder
 
                 _device.ConnectionStatusChanged += OnConnectionStatusChanged;
 
-                Log($"Connected to {_device.Name}");
+                Log($"Connected to {ConnectedDeviceName}");
 
                 // Discover and subscribe to fitness characteristics
                 await DiscoverAndSubscribeAsync();
@@ -319,22 +325,31 @@ namespace FTMSBluetoothForwarder
 
         private FitnessData ParseKeiserData(byte[] data)
         {
-            // Keiser M3i format: proprietary
-            // This is a simplified parser - actual format may vary
-            if (data.Length < 14) return new FitnessData();
+            // Keiser M3i format: proprietary, LITTLE ENDIAN
+            // Reference: https://dev.keiser.com/mseries/direct/
+            // Magic bytes: [0]=2, [1]=1, [2]=version (6 for M3i)
+            if (data.Length < 12) return new FitnessData();
+
+            // Validate magic bytes
+            if (data[0] != 2 || data[1] != 1)
+            {
+                return new FitnessData(); // Not valid Keiser data
+            }
 
             var result = new FitnessData();
 
-            // Keiser format (typical):
-            // Bytes vary by version, but commonly:
-            // Power is at offset 10-11 (big endian)
-            // Cadence is at offset 6-7
-            // Heart rate at offset 8
             try
             {
-                result.Cadence = (data[6] << 8 | data[7]) / 10.0;
-                result.HeartRate = data[8];
-                result.Power = data[10] << 8 | data[11];
+                // All fields are LITTLE ENDIAN uint16
+                // Cadence at offset 6-7 (divide by 10)
+                result.Cadence = BitConverter.ToUInt16(data, 6) / 10.0;
+
+                // Heart rate at offset 8-9 (divide by 10)
+                int hrRaw = BitConverter.ToUInt16(data, 8);
+                result.HeartRate = hrRaw > 0 ? hrRaw / 10 : 0;
+
+                // Power at offset 10-11
+                result.Power = BitConverter.ToUInt16(data, 10);
             }
             catch { }
 

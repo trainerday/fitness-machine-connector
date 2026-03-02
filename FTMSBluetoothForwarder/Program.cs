@@ -152,7 +152,7 @@ connection.OnDisconnected += reason =>
             await Task.Delay(2000); // Wait 2 seconds before reconnecting
             if (autoReconnectEnabled && !connection.IsConnected)
             {
-                var success = await connection.ConnectAsync(autoReconnectDeviceId);
+                var success = await connection.ConnectAsync(autoReconnectDeviceId, autoReconnectDeviceName);
                 if (success)
                 {
                     SendEvent(new
@@ -280,7 +280,7 @@ async Task HandleCommand(string line)
                     if (!string.IsNullOrEmpty(deviceId))
                     {
                         Log($"Connecting to {deviceName ?? deviceId}...");
-                        var success = await connection.ConnectAsync(deviceId);
+                        var success = await connection.ConnectAsync(deviceId, deviceName);
                         if (success)
                         {
                             SendEvent(new
