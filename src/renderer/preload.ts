@@ -119,8 +119,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     });
   },
 
+  onAutoReconnectFailed: (callback: (info: { deviceName: string; reason: string }) => void) => {
+    ipcRenderer.on('auto-reconnect-failed', (_event, info) => {
+      callback(info);
+    });
+  },
+
   removeDotnetListeners: () => {
     ipcRenderer.removeAllListeners('device-connected-via-dotnet');
     ipcRenderer.removeAllListeners('fitness-data-from-dotnet');
+    ipcRenderer.removeAllListeners('auto-reconnect-failed');
   },
 });

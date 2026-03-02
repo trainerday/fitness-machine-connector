@@ -359,6 +359,15 @@ function setupIpcListeners(): void {
       resistance: 0,
     };
   });
+
+  // Listen for auto-reconnect failure
+  window.electronAPI.onAutoReconnectFailed((info) => {
+    console.log('[Renderer] Auto-reconnect failed:', info);
+    activityLog.log(`Auto-reconnect failed: ${info.reason}`);
+
+    // Show alert to user
+    alert(`Could not reconnect to "${info.deviceName}"\n\n${info.reason}\n\nClick "Scan for Devices" to connect manually.`);
+  });
 }
 
 // =============================================================================

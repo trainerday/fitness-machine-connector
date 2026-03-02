@@ -238,6 +238,10 @@ function setupPowerMonitor(): void {
   });
 }
 
+// Track auto-reconnect state
+let autoReconnectTimeout: NodeJS.Timeout | null = null;
+let autoReconnectInProgress = false;
+
 /**
  * Attempt to auto-reconnect to the last connected device
  * Uses .NET backend for scanning (bypasses Web Bluetooth gesture requirement)
@@ -250,7 +254,14 @@ function attemptAutoReconnect(): void {
     return;
   }
 
+  // Don't start another auto-reconnect if one is already in progress
+  if (autoReconnectInProgress) {
+    console.log('[Main] Auto-reconnect already in progress, skipping');
+    return;
+  }
+
   console.log(`[Main] Attempting auto-reconnect to: ${savedDevice.name} (via .NET)`);
+  autoReconnectInProgress = true;
 
   // Make sure broadcaster is running
   if (!broadcaster.isRunning()) {
@@ -260,7 +271,19 @@ function attemptAutoReconnect(): void {
 
   // Set up event listeners for this auto-reconnect attempt
   const targetDeviceName = savedDevice.name.toLowerCase();
-  let foundDeviceId: string | null = null;
+  let deviceConnected = false;
+
+  // Cleanup function to remove all listeners and clear timeout
+  const cleanup = () => {
+    autoReconnectInProgress = false;
+    if (autoReconnectTimeout) {
+      clearTimeout(autoReconnectTimeout);
+      autoReconnectTimeout = null;
+    }
+    broadcaster.removeListener('deviceFound', onDeviceFound);
+    broadcaster.removeListener('scanComplete', onScanComplete);
+    broadcaster.removeListener('deviceConnected', onDeviceConnected);
+  };
 
   const onDeviceFound = (device: { id: string; name: string; isFitnessDevice?: boolean }) => {
     console.log(`[Main] .NET found device: ${device.name} (fitness: ${device.isFitnessDevice})`);
@@ -268,7 +291,6 @@ function attemptAutoReconnect(): void {
     // Check if this is our target device
     if (device.name.toLowerCase() === targetDeviceName) {
       console.log(`[Main] Target device found! ID: ${device.id}`);
-      foundDeviceId = device.id;
       // Stop scanning and connect
       broadcaster.stopScan();
       broadcaster.connect(device.id, device.name);
@@ -277,17 +299,13 @@ function attemptAutoReconnect(): void {
 
   const onScanComplete = (count: number) => {
     console.log(`[Main] .NET scan complete: ${count} devices found`);
-    broadcaster.removeListener('deviceFound', onDeviceFound);
-    broadcaster.removeListener('scanComplete', onScanComplete);
-
-    if (!foundDeviceId) {
-      console.log('[Main] Auto-reconnect failed - device not found in scan');
-    }
+    // Don't cleanup yet - wait for connection or timeout
   };
 
   const onDeviceConnected = (device: { id: string; name: string }) => {
     console.log(`[Main] .NET connected to: ${device.name}`);
-    broadcaster.removeListener('deviceConnected', onDeviceConnected);
+    deviceConnected = true;
+    cleanup();
 
     // Notify renderer that device is connected
     mainWindow?.webContents.send('device-connected-via-dotnet', device);
@@ -301,9 +319,25 @@ function attemptAutoReconnect(): void {
   // Configure auto-reconnect in .NET (for future disconnects)
   broadcaster.setAutoReconnect(true, savedDevice.id, savedDevice.name);
 
+  // FAILSAFE: Set a timeout - if device not connected within 30 seconds, give up
+  const RECONNECT_TIMEOUT_MS = 30000; // 30 seconds
+  autoReconnectTimeout = setTimeout(() => {
+    if (!deviceConnected) {
+      console.log(`[Main] Auto-reconnect timeout - ${savedDevice.name} not found within ${RECONNECT_TIMEOUT_MS / 1000} seconds`);
+      broadcaster.stopScan();
+      cleanup();
+
+      // Notify renderer to show a message to the user
+      mainWindow?.webContents.send('auto-reconnect-failed', {
+        deviceName: savedDevice.name,
+        reason: 'Device not found. Make sure it is powered on and nearby.',
+      });
+    }
+  }, RECONNECT_TIMEOUT_MS);
+
   // Start scanning via .NET
   console.log('[Main] Starting .NET BLE scan...');
-  broadcaster.scan(15); // 15 second scan
+  broadcaster.scan(20); // 20 second scan (less than timeout)
 }
 
 app.on('window-all-closed', () => {
