@@ -174,23 +174,33 @@ class BluetoothService {
     }
 
     try {
-      // getDevices() returns previously paired devices without user interaction
+      console.log('[BluetoothService] Calling navigator.bluetooth.getDevices()...');
+
+      // getDevices() returns previously permitted devices without user interaction
       const devices = await navigator.bluetooth.getDevices();
-      console.log(`[BluetoothService] Found ${devices.length} previously paired device(s)`);
-      devices.forEach((d) => console.log(`[BluetoothService]   - ${d.name} (${d.id})`));
+      console.log(`[BluetoothService] getDevices() returned ${devices.length} device(s)`);
+
+      if (devices.length === 0) {
+        console.log('[BluetoothService] No previously permitted devices found');
+        return false;
+      }
+
+      devices.forEach((d) => console.log(`[BluetoothService]   - "${d.name}" (${d.id})`));
 
       // Match by name since device IDs change between sessions
       const device = devices.find((d) => d.name === deviceName);
 
       if (!device) {
-        console.log(`[BluetoothService] Device "${deviceName}" not found in paired devices`);
+        console.log(`[BluetoothService] Device "${deviceName}" not found in permitted devices`);
         return false;
       }
 
-      console.log(`[BluetoothService] Found device for reconnect: ${device.name} (${device.id})`);
+      console.log(`[BluetoothService] Found matching device: ${device.name} (${device.id})`);
+      console.log('[BluetoothService] Attempting to connect...');
 
       // Connect to the device
       await this.connect(device);
+      console.log('[BluetoothService] Reconnection successful!');
       return true;
     } catch (error) {
       console.error('[BluetoothService] Reconnection failed:', error);

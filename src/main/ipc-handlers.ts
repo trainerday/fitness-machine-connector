@@ -30,11 +30,13 @@ export function setupIpcHandlers(
 
   // Broadcaster controls
   ipcMain.on('broadcaster-start', () => {
+    console.log('[IPC] broadcaster-start received');
     broadcaster.start();
     startPowerSaveBlocker();
   });
 
   ipcMain.on('broadcaster-stop', () => {
+    console.log('[IPC] broadcaster-stop received');
     broadcaster.stop();
     stopPowerSaveBlocker();
   });
@@ -69,7 +71,10 @@ export function setupIpcHandlers(
   });
 
   ipcMain.handle('load-last-device', (): PersistedDevice | null => {
-    return loadLastDevice();
+    console.log('[IPC] Renderer requested load-last-device');
+    const device = loadLastDevice();
+    console.log('[IPC] Returning saved device:', device);
+    return device;
   });
 
   ipcMain.on('clear-last-device', () => {

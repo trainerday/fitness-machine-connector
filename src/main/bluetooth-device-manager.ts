@@ -8,6 +8,10 @@ export class BluetoothDeviceManager {
   private onDeviceFound: ((device: Electron.BluetoothDevice) => void) | null = null;
   private isScanning = false;
 
+  // Auto-reconnect state
+  private autoReconnectDeviceName: string | null = null;
+  private autoReconnectCallback: ((success: boolean, deviceId?: string) => void) | null = null;
+
   /**
    * Set callback to be called when a new device is discovered
    */
@@ -33,12 +37,60 @@ export class BluetoothDeviceManager {
         console.log(`[BluetoothDeviceManager] New device: ${device.deviceName || 'Unknown'} (${device.deviceId})`);
         this.devices.set(device.deviceId, device);
 
+        // Check for auto-reconnect match
+        if (this.autoReconnectDeviceName && device.deviceName === this.autoReconnectDeviceName) {
+          console.log(`[BluetoothDeviceManager] Auto-reconnect: Found target device "${device.deviceName}"`);
+          this.autoSelectDevice(device.deviceId);
+          return;
+        }
+
         // Immediately notify renderer of new device
         if (this.onDeviceFound) {
           this.onDeviceFound(device);
         }
       }
     });
+  }
+
+  /**
+   * Auto-select a device (for auto-reconnect)
+   */
+  private autoSelectDevice(deviceId: string): void {
+    console.log(`[BluetoothDeviceManager] Auto-selecting device: ${deviceId}`);
+
+    if (this.selectCallback) {
+      this.selectCallback(deviceId);
+      this.selectCallback = null;
+    }
+
+    if (this.autoReconnectCallback) {
+      this.autoReconnectCallback(true, deviceId);
+      this.autoReconnectCallback = null;
+    }
+
+    this.autoReconnectDeviceName = null;
+    this.devices.clear();
+    this.isScanning = false;
+  }
+
+  /**
+   * Set up auto-reconnect mode - will auto-select device with matching name
+   */
+  setAutoReconnect(deviceName: string, callback: (success: boolean, deviceId?: string) => void): void {
+    console.log(`[BluetoothDeviceManager] Setting up auto-reconnect for: ${deviceName}`);
+    this.autoReconnectDeviceName = deviceName;
+    this.autoReconnectCallback = callback;
+  }
+
+  /**
+   * Clear auto-reconnect mode
+   */
+  clearAutoReconnect(): void {
+    this.autoReconnectDeviceName = null;
+    if (this.autoReconnectCallback) {
+      this.autoReconnectCallback(false);
+      this.autoReconnectCallback = null;
+    }
   }
 
   /**

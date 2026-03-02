@@ -13,7 +13,13 @@ export interface PersistedDevice {
   lastConnected: number; // timestamp
 }
 
+export interface BluetoothDevicePermission {
+  deviceId: string;
+  deviceName: string;
+}
+
 const PERSISTENCE_FILE = 'last-device.json';
+const BLUETOOTH_PERMISSIONS_FILE = 'bluetooth-permissions.json';
 
 /**
  * Get the path to the persistence file in the user data directory
@@ -83,5 +89,62 @@ export function clearLastDevice(): void {
     }
   } catch (error) {
     console.error('[DevicePersistence] Failed to clear device:', error);
+  }
+}
+
+/**
+ * Get path to Bluetooth permissions file
+ */
+function getBluetoothPermissionsPath(): string {
+  return path.join(app.getPath('userData'), BLUETOOTH_PERMISSIONS_FILE);
+}
+
+/**
+ * Load persisted Bluetooth device permissions
+ */
+export function loadPersistedBluetoothDevices(): BluetoothDevicePermission[] {
+  try {
+    const filePath = getBluetoothPermissionsPath();
+
+    if (!fs.existsSync(filePath)) {
+      return [];
+    }
+
+    const data = fs.readFileSync(filePath, 'utf-8');
+    const devices = JSON.parse(data) as BluetoothDevicePermission[];
+    console.log('[DevicePersistence] Loaded Bluetooth permissions:', devices.length, 'devices');
+    return devices;
+  } catch (error) {
+    console.error('[DevicePersistence] Failed to load Bluetooth permissions:', error);
+    return [];
+  }
+}
+
+/**
+ * Save a Bluetooth device permission
+ */
+export function saveBluetoothDevicePermission(device: { deviceId: string; deviceName?: string }): void {
+  try {
+    const filePath = getBluetoothPermissionsPath();
+    const devices = loadPersistedBluetoothDevices();
+
+    // Check if device already exists
+    const existingIndex = devices.findIndex((d) => d.deviceId === device.deviceId);
+
+    const permission: BluetoothDevicePermission = {
+      deviceId: device.deviceId,
+      deviceName: device.deviceName || 'Unknown',
+    };
+
+    if (existingIndex >= 0) {
+      devices[existingIndex] = permission;
+    } else {
+      devices.push(permission);
+    }
+
+    fs.writeFileSync(filePath, JSON.stringify(devices, null, 2));
+    console.log('[DevicePersistence] Saved Bluetooth permission:', permission.deviceName);
+  } catch (error) {
+    console.error('[DevicePersistence] Failed to save Bluetooth permission:', error);
   }
 }

@@ -267,25 +267,28 @@ function setupIpcListeners(): void {
 
   // Listen for devices as they're discovered (streaming)
   window.electronAPI.onBluetoothDeviceFound((device: BluetoothDeviceInfo) => {
-    console.log(`[Renderer] Device found: ${device.deviceName || 'Unknown'} (${device.deviceId})`);
+    console.log(`[Scan] Device found: ${device.deviceName || 'Unknown'} (${device.deviceId})`);
 
     // Check if this is the device we're trying to auto-reconnect to
-    if (autoReconnectMode && autoReconnectDeviceName && device.deviceName === autoReconnectDeviceName) {
-      console.log(`[Renderer] Found auto-reconnect target: ${device.deviceName}`);
-      activityLog.log(`Found ${device.deviceName}, connecting...`);
+    if (autoReconnectMode && autoReconnectDeviceName) {
+      console.log(`[AutoReconnect] Checking: "${device.deviceName}" === "${autoReconnectDeviceName}" ?`);
 
-      // Reset auto-reconnect state
-      autoReconnectMode = false;
-      autoReconnectDeviceName = null;
+      if (device.deviceName === autoReconnectDeviceName) {
+        devLog(`Found ${device.deviceName}! Connecting...`);
 
-      // Auto-select this device (this will trigger connection)
-      handleDeviceSelection(device.deviceId, device.deviceName);
-      return;
+        // Reset auto-reconnect state
+        autoReconnectMode = false;
+        autoReconnectDeviceName = null;
+
+        // Auto-select this device (this will trigger connection)
+        handleDeviceSelection(device.deviceId, device.deviceName);
+        return;
+      }
     }
 
     // Only add devices to the list if we're waiting for scan results (not in auto-reconnect mode)
     if (!awaitingScanResults) {
-      console.log('[Renderer] Ignoring device - not awaiting scan results');
+      console.log('[Scan] Ignoring device - not awaiting scan results');
       return;
     }
 
@@ -371,7 +374,7 @@ function stopUpdateInterval(): void {
  * Initialize the application.
  * Sets up UI components, callbacks, and event listeners.
  */
-function init(): void {
+async function init(): Promise<void> {
   // Initialize UI components
   activityLog = new ActivityLog('log');
   dataDisplay = new DataDisplay();
@@ -396,7 +399,61 @@ function init(): void {
   // Set up IPC listeners for Electron
   setupIpcListeners();
 
+  // Note: Auto-reconnect is handled by the main process
+  // It triggers requestDevice() via executeJavaScript which bypasses gesture requirement
+
   activityLog.log('Ready. Click "Scan for Devices" to find fitness equipment.');
+}
+
+/**
+ * Log to both console and activity log for easier debugging
+ */
+function devLog(message: string, data?: unknown): void {
+  if (data !== undefined) {
+    console.log(`[AutoReconnect] ${message}`, data);
+  } else {
+    console.log(`[AutoReconnect] ${message}`);
+  }
+  // Only log to activity log if it's initialized
+  if (activityLog) {
+    activityLog.log(message);
+  }
+}
+
+/**
+ * Check for a previously saved device and attempt automatic reconnection.
+ * Uses navigator.bluetooth.getDevices() which returns previously permitted devices.
+ */
+async function checkForAutoReconnect(): Promise<void> {
+  if (!window.electronAPI) {
+    devLog('No electronAPI available');
+    return;
+  }
+
+  try {
+    devLog('Checking for saved device...');
+    const savedDevice = await window.electronAPI.loadLastDevice();
+
+    if (!savedDevice) {
+      devLog('No saved device found');
+      return;
+    }
+
+    devLog(`Found saved device: ${savedDevice.name}`);
+    devLog('Attempting automatic reconnection...');
+
+    // Try to reconnect using getDevices() - no user gesture required
+    const success = await fitnessReader.reconnect(savedDevice.name);
+
+    if (success) {
+      devLog(`Successfully reconnected to ${savedDevice.name}`);
+    } else {
+      devLog(`Could not auto-reconnect to ${savedDevice.name} - device may be off or out of range`);
+    }
+  } catch (error) {
+    devLog(`Error during auto-reconnect: ${(error as Error).message}`);
+    console.error('[AutoReconnect] Full error:', error);
+  }
 }
 
 // =============================================================================

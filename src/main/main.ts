@@ -2,19 +2,23 @@
  * Main process entry point - handles window lifecycle
  */
 
-import { app, BrowserWindow, Tray, Menu, nativeImage, powerMonitor } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage, powerMonitor, session } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { BluetoothDeviceManager } from './bluetooth-device-manager';
 import { BluetoothBroadcaster } from './bluetooth-broadcaster';
 import { setupIpcHandlers } from './ipc-handlers';
 import { stopPowerSaveBlocker } from './power-manager';
-import { loadLastDevice } from './device-persistence';
+import { loadLastDevice, loadPersistedBluetoothDevices, saveBluetoothDevicePermission } from './device-persistence';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
 }
+
+// Enable experimental Web Bluetooth features including getDevices()
+app.commandLine.appendSwitch('enable-experimental-web-platform-features');
+app.commandLine.appendSwitch('enable-web-bluetooth-new-permissions-backend');
 
 // Tray instance
 let tray: Tray | null = null;
@@ -140,25 +144,58 @@ function createWindow(): void {
 
 // App lifecycle handlers
 app.on('ready', () => {
+  setupBluetoothPermissions();
   createWindow();
   createTray();
   setupPowerMonitor();
   setupAutoStart();
 
-  // Attempt auto-reconnect on startup if we have a saved device
-  const lastDevice = loadLastDevice();
-  console.log('[Main] Startup - checking for saved device:', lastDevice);
-  if (lastDevice) {
-    console.log('[Main] Found saved device, will attempt auto-reconnect:', lastDevice.name);
-    // Give the renderer time to initialize, then trigger reconnect
-    setTimeout(() => {
-      console.log('[Main] Sending attempt-reconnect to renderer...');
-      mainWindow?.webContents.send('attempt-reconnect', lastDevice);
-    }, 2000);
-  } else {
-    console.log('[Main] No saved device found on startup');
-  }
+  // Attempt auto-reconnect after window loads
+  mainWindow?.webContents.on('did-finish-load', () => {
+    attemptAutoReconnect();
+  });
 });
+
+/**
+ * Set up Bluetooth device permission handlers
+ * This allows navigator.bluetooth.getDevices() to return previously connected devices
+ */
+function setupBluetoothPermissions(): void {
+  // Load persisted device permissions
+  const persistedDevices = loadPersistedBluetoothDevices();
+  console.log('[Main] Loaded persisted Bluetooth devices:', persistedDevices.length);
+
+  // Grant permissions for previously connected devices
+  session.defaultSession.setDevicePermissionHandler((details) => {
+    if (details.deviceType === 'bluetooth') {
+      console.log('[Main] Device permission check:', details.device);
+
+      // Check if this device was previously granted permission
+      const isGranted = persistedDevices.some(
+        (d) => d.deviceId === details.device.deviceId
+      );
+
+      if (isGranted) {
+        console.log('[Main] Device permission granted (persisted):', details.device.deviceName);
+        return true;
+      }
+
+      // For new devices, grant permission and persist it
+      console.log('[Main] Granting new device permission:', details.device.deviceName);
+      saveBluetoothDevicePermission(details.device);
+      return true;
+    }
+    return false;
+  });
+
+  // Allow permission checks to pass for Bluetooth
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+    if (permission === 'bluetooth') {
+      return true;
+    }
+    return true; // Allow other permissions by default
+  });
+}
 
 /**
  * Configure app to start automatically on login
@@ -183,14 +220,60 @@ function setupAutoStart(): void {
 function setupPowerMonitor(): void {
   powerMonitor.on('resume', () => {
     console.log('[Main] System resumed from sleep, attempting reconnect...');
-    const lastDevice = loadLastDevice();
-    if (lastDevice && mainWindow) {
-      mainWindow.webContents.send('attempt-reconnect', lastDevice);
-    }
+    attemptAutoReconnect();
   });
 
   powerMonitor.on('suspend', () => {
     console.log('[Main] System going to sleep...');
+  });
+}
+
+/**
+ * Attempt to auto-reconnect to the last connected device
+ * Triggers a scan from main process and auto-selects when device is found
+ */
+function attemptAutoReconnect(): void {
+  const savedDevice = loadLastDevice();
+
+  if (!savedDevice) {
+    console.log('[Main] No saved device for auto-reconnect');
+    return;
+  }
+
+  console.log(`[Main] Attempting auto-reconnect to: ${savedDevice.name}`);
+
+  // Set up auto-reconnect mode - will auto-select when device is found
+  deviceManager.setAutoReconnect(savedDevice.name, (success, deviceId) => {
+    if (success) {
+      console.log(`[Main] Auto-reconnect successful: ${deviceId}`);
+    } else {
+      console.log('[Main] Auto-reconnect failed - device not found');
+    }
+  });
+
+  // Trigger scan from main process (bypasses gesture requirement)
+  mainWindow?.webContents.executeJavaScript(`
+    (async () => {
+      try {
+        console.log('[AutoReconnect] Main process triggering scan...');
+        // This will trigger the select-bluetooth-device event in main
+        const device = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: [0x1816, 0x1818, 0x180D, 0x1826]
+        });
+        console.log('[AutoReconnect] Device selected:', device.name);
+        // Connection will be handled by the normal flow
+        return true;
+      } catch (error) {
+        console.log('[AutoReconnect] Scan failed:', error.message);
+        return false;
+      }
+    })()
+  `).then((result) => {
+    console.log('[Main] Auto-reconnect scan result:', result);
+  }).catch((error) => {
+    console.error('[Main] Auto-reconnect scan error:', error);
+    deviceManager.clearAutoReconnect();
   });
 }
 
