@@ -58,6 +58,18 @@ namespace FTMSBluetoothForwarder
 
         public string DeviceName { get; set; } = "TD Bike";
 
+        /// <summary>
+        /// Log current connection status for debugging
+        /// </summary>
+        public void LogConnectionStatus()
+        {
+            Log($"[FTMS Status] IsRunning: {IsRunning}");
+            Log($"[FTMS Status] ServiceProvider: {_serviceProvider?.AdvertisementStatus}");
+            Log($"[FTMS Status] IndoorBikeData subscribers: {_indoorBikeDataChar?.SubscribedClients.Count ?? 0}");
+            Log($"[FTMS Status] HeartRate subscribers: {_heartRateMeasurementChar?.SubscribedClients.Count ?? 0}");
+            Log($"[FTMS Status] Advertiser: {_advertiser?.Status}");
+        }
+
         public void UpdateData(FitnessData data)
         {
             lock (_dataLock)
@@ -186,36 +198,82 @@ namespace FTMSBluetoothForwarder
         {
             try
             {
+                Log("[FTMS] Creating explicit BLE advertisement...");
                 _advertiser = new BluetoothLEAdvertisementPublisher();
 
-                // Set the device name
-                _advertiser.Advertisement.LocalName = DeviceName;
+                // Use a shorter device name to fit in advertisement packet (max ~20 chars for safe)
+                string shortName = DeviceName.Length > 16 ? DeviceName.Substring(0, 16) : DeviceName;
+                _advertiser.Advertisement.LocalName = shortName;
+                Log($"[FTMS] Advertisement LocalName: {shortName}");
 
-                // Add service UUIDs to the advertisement
-                _advertiser.Advertisement.ServiceUuids.Add(FtmsServiceUuid);
-                _advertiser.Advertisement.ServiceUuids.Add(HeartRateServiceUuid);
+                // Add ONLY the FTMS service UUID (keep advertisement small)
+                // The service UUIDs need to be in the scan response, not main advertisement
+                // Using DataSections instead of ServiceUuids for better compatibility
+                var manufacturerData = new BluetoothLEManufacturerData();
+                manufacturerData.CompanyId = 0xFFFF; // Test/development company ID
+                var writer = new DataWriter();
+                writer.WriteByte(0x01); // Version
+                manufacturerData.Data = writer.DetachBuffer();
+
+                // Add service UUID to the advertisement using DataSections
+                var serviceData = new BluetoothLEAdvertisementDataSection();
+                serviceData.DataType = 0x03; // Complete list of 16-bit service UUIDs
+                var serviceWriter = new DataWriter();
+                serviceWriter.WriteUInt16(0x1826); // FTMS service (16-bit short form)
+                serviceData.Data = serviceWriter.DetachBuffer();
+                _advertiser.Advertisement.DataSections.Add(serviceData);
+
+                Log($"[FTMS] Added FTMS service UUID (0x1826) to advertisement");
 
                 _advertiser.StatusChanged += (sender, args) =>
                 {
+                    Log($"[FTMS] Explicit advertisement status: {args.Status}, Error: {args.Error}");
                     switch (args.Status)
                     {
                         case BluetoothLEAdvertisementPublisherStatus.Started:
-                            Log($"Advertisement started with name '{DeviceName}', FTMS and Heart Rate services");
+                            Log($"[FTMS] Explicit advertisement STARTED with name '{shortName}'");
                             break;
                         case BluetoothLEAdvertisementPublisherStatus.Aborted:
-                            Log($"Advertisement aborted: {args.Error}");
+                            Log($"[FTMS] Explicit advertisement ABORTED: {args.Error}");
+                            // Try without data sections as fallback
+                            TrySimpleAdvertisement();
                             break;
                         case BluetoothLEAdvertisementPublisherStatus.Stopped:
-                            Log("Advertisement stopped");
+                            Log("[FTMS] Explicit advertisement STOPPED");
                             break;
                     }
+                };
+
+                Log("[FTMS] Starting explicit advertisement...");
+                _advertiser.Start();
+                Log("[FTMS] Explicit advertisement Start() called");
+            }
+            catch (Exception ex)
+            {
+                Log($"[FTMS] Failed to start explicit advertisement: {ex.Message}");
+                TrySimpleAdvertisement();
+            }
+        }
+
+        private void TrySimpleAdvertisement()
+        {
+            try
+            {
+                Log("[FTMS] Trying simple advertisement (name only)...");
+                _advertiser = new BluetoothLEAdvertisementPublisher();
+                _advertiser.Advertisement.LocalName = "FitBridge";
+
+                _advertiser.StatusChanged += (sender, args) =>
+                {
+                    Log($"[FTMS] Simple advertisement status: {args.Status}");
                 };
 
                 _advertiser.Start();
             }
             catch (Exception ex)
             {
-                Log($"Failed to start explicit advertisement: {ex.Message}");
+                Log($"[FTMS] Simple advertisement also failed: {ex.Message}");
+                Log("[FTMS] Relying on GATT service provider's built-in advertising only");
             }
         }
 
@@ -443,17 +501,41 @@ namespace FTMSBluetoothForwarder
         private void OnHeartRateSubscribersChanged(GattLocalCharacteristic sender, object args)
         {
             int count = sender.SubscribedClients.Count;
-            Log($"Heart Rate subscribers: {count}");
+            Log($"[FTMS] Heart Rate subscribers changed: {count}");
+
+            // Log each subscribed client
+            foreach (var client in sender.SubscribedClients)
+            {
+                try
+                {
+                    Log($"[FTMS] HR Client: {client.Session.DeviceId.Id}");
+                }
+                catch { }
+            }
         }
 
         private void OnIndoorBikeDataSubscribersChanged(GattLocalCharacteristic sender, object args)
         {
             int count = sender.SubscribedClients.Count;
-            Log($"Indoor Bike Data subscribers: {count}");
+            Log($"[FTMS] Indoor Bike Data subscribers changed: {count}");
+
+            // Log each subscribed client
+            foreach (var client in sender.SubscribedClients)
+            {
+                try
+                {
+                    Log($"[FTMS] Bike Data Client: {client.Session.DeviceId.Id}");
+                }
+                catch { }
+            }
 
             if (count > 0)
             {
                 SendStatus("connected", new { subscribers = count });
+            }
+            else
+            {
+                Log("[FTMS] All clients disconnected from Indoor Bike Data");
             }
         }
 
@@ -568,17 +650,21 @@ namespace FTMSBluetoothForwarder
         private void OnAdvertisementStatusChanged(GattServiceProvider sender,
             GattServiceProviderAdvertisementStatusChangedEventArgs args)
         {
+            Log($"[FTMS] Advertisement status: {args.Status}, Error: {args.Error}");
+
             switch (args.Status)
             {
                 case GattServiceProviderAdvertisementStatus.Started:
-                    Log("Server started, waiting for connections...");
+                    Log($"[FTMS] Server advertising as '{DeviceName}', waiting for connections...");
+                    Log($"[FTMS] FTMS Service UUID: {FtmsServiceUuid}");
+                    Log($"[FTMS] Heart Rate Service UUID: {HeartRateServiceUuid}");
                     SendStatus("advertising", new { device_name = DeviceName });
                     break;
                 case GattServiceProviderAdvertisementStatus.Stopped:
-                    Log("Server stopped");
+                    Log("[FTMS] Server stopped advertising");
                     break;
                 case GattServiceProviderAdvertisementStatus.Aborted:
-                    Log($"Advertising aborted: {args.Error}");
+                    Log($"[FTMS] Advertising aborted: {args.Error}");
                     break;
             }
         }

@@ -386,6 +386,7 @@ SendEvent(new
 // Start FTMS notification loop (4Hz as per FTMS spec)
 var notifyTask = Task.Run(async () =>
 {
+    int tickCount = 0;
     while (!cts.Token.IsCancellationRequested)
     {
         try
@@ -394,6 +395,18 @@ var notifyTask = Task.Run(async () =>
             {
                 await server.NotifyAsync();
             }
+
+            // Log status every 10 seconds (40 ticks at 4Hz)
+            tickCount++;
+            if (tickCount >= 40)
+            {
+                tickCount = 0;
+                if (ftmsStarted)
+                {
+                    server.LogConnectionStatus();
+                }
+            }
+
             await Task.Delay(250, cts.Token); // 4Hz
         }
         catch (OperationCanceledException)
