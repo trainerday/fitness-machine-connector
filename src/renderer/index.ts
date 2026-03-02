@@ -331,6 +331,34 @@ function setupIpcListeners(): void {
     console.log('[Renderer] Starting silent scan for auto-reconnect');
     handleScan();
   });
+
+  // Listen for device connection from .NET backend (bypasses Web Bluetooth)
+  window.electronAPI.onDeviceConnectedViaDotnet((device) => {
+    console.log('[Renderer] Device connected via .NET:', device);
+    activityLog.log(`Connected to ${device.name} (via .NET)`);
+    statusIndicator.setConnected(device.name);
+    deviceList.hide();
+
+    // Start the update interval for display/broadcast
+    startUpdateInterval();
+
+    // Auto-reconnect was successful, clear the mode
+    autoReconnectMode = false;
+    autoReconnectDeviceName = null;
+  });
+
+  // Listen for fitness data from .NET backend
+  window.electronAPI.onFitnessDataFromDotnet((data) => {
+    // Update latest fitness data (will be consumed by update interval)
+    latestFitnessData = {
+      power: data.power ?? 0,
+      cadence: data.cadence ?? 0,
+      heartRate: data.heartRate ?? 0,
+      speed: 0,
+      distance: 0,
+      resistance: 0,
+    };
+  });
 }
 
 // =============================================================================

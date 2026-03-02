@@ -41,6 +41,9 @@ bool autoReconnectEnabled = false;
 string? autoReconnectDeviceId = null;
 string? autoReconnectDeviceName = null;
 
+// Track if FTMS broadcasting has started (lazy start on first data/connection)
+bool ftmsStarted = false;
+
 // JSON serialization options
 var jsonOptions = new JsonSerializerOptions
 {
@@ -111,6 +114,16 @@ scanner.OnScanComplete += count =>
 connection.OnLog += message => Log(message);
 connection.OnDataReceived += (data, source) =>
 {
+    // Start FTMS server on first data if not already started
+    if (!ftmsStarted)
+    {
+        _ = Task.Run(async () =>
+        {
+            Log("Starting FTMS broadcast (data from .NET connection)...");
+            ftmsStarted = await server.StartAsync();
+        });
+    }
+
     // Send data event to Electron
     SendEvent(new
     {
@@ -195,6 +208,16 @@ async Task HandleCommand(string line)
 
             if (hasData)
             {
+                // Start FTMS server on first data received (lazy start)
+                if (!ftmsStarted)
+                {
+                    Log("Starting FTMS broadcast (data received)...");
+                    ftmsStarted = await server.StartAsync();
+                    if (!ftmsStarted)
+                    {
+                        Log("Failed to start FTMS server", "error");
+                    }
+                }
                 server.UpdateData(legacyData);
             }
             return;
@@ -240,9 +263,10 @@ async Task HandleCommand(string line)
                             });
 
                             // Start FTMS broadcasting if not already running
-                            if (!server.IsRunning)
+                            if (!ftmsStarted)
                             {
-                                await server.StartAsync();
+                                Log("Starting FTMS broadcast (device connected)...");
+                                ftmsStarted = await server.StartAsync();
                             }
                         }
                         else
@@ -319,14 +343,6 @@ Console.CancelKeyPress += (s, e) =>
     e.Cancel = true;
     cts.Cancel();
 };
-
-// Start the FTMS server immediately (backward compatible behavior)
-bool started = await server.StartAsync();
-if (!started)
-{
-    SendEvent(new { type = "error", message = "Failed to start FTMS server" });
-    return 1;
-}
 
 // Send ready event
 SendEvent(new
