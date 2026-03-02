@@ -127,12 +127,15 @@ namespace FTMSBluetoothForwarder
     }
 
     /// <summary>
-    /// Fitness data received from stdin.
+    /// Fitness data received from stdin or BLE device.
     /// </summary>
     public class FitnessData
     {
         public int Power { get; set; }
         public double Cadence { get; set; }
         public int HeartRate { get; set; }
+        public double Speed { get; set; }       // km/h
+        public double Distance { get; set; }    // meters
+        public int Resistance { get; set; }     // level
     }
 }

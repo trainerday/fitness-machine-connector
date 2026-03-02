@@ -6,38 +6,73 @@ using System.Threading.Tasks;
 using FTMSBluetoothForwarder;
 
 /// <summary>
-/// FTMS Bike BLE Broadcaster for Windows.
-/// Receives fitness data via stdin (JSON) and broadcasts as FTMS Indoor Bike.
+/// FitBridge BLE Bridge for Windows.
+/// Scans for BLE fitness devices, connects and reads data, then broadcasts via FTMS.
 ///
-/// Communication protocol (same as Python version):
-/// - Receives: JSON lines on stdin: {"power": 150, "cadence": 85, "heartRate": 120}
-/// - Sends: JSON lines on stdout: {"status": "advertising"}, {"log": "message"}
+/// Communication protocol (JSON over stdin/stdout):
+/// Commands (Electron → .NET):
+///   {"type": "scan", "duration": 10}
+///   {"type": "stopScan"}
+///   {"type": "connect", "deviceId": "XXXXXXXXXXXX", "deviceName": "Device"}
+///   {"type": "disconnect"}
+///   {"type": "getStatus"}
+///   {"type": "setAutoReconnect", "enabled": true, "deviceId": "...", "deviceName": "..."}
+///
+/// Events (.NET → Electron):
+///   {"type": "ready", "version": "1.0.0", "platform": "windows"}
+///   {"type": "deviceFound", "device": {...}}
+///   {"type": "scanComplete", "devicesFound": 5}
+///   {"type": "connected", "device": {...}}
+///   {"type": "disconnected", "reason": "..."}
+///   {"type": "data", "power": 150, "cadence": 85, "source": "ftms"}
+///   {"type": "ftmsStatus", "state": "advertising", "clientAddress": "..."}
+///   {"type": "status", ...}
+///   {"type": "error", "message": "..."}
+///   {"type": "log", "level": "info", "message": "..."}
 /// </summary>
 
 var cts = new CancellationTokenSource();
 var server = new FtmsGattServer();
+var scanner = new BleScanner();
+var connection = new BleDeviceConnection();
+
+// Auto-reconnect settings
+bool autoReconnectEnabled = false;
+string? autoReconnectDeviceId = null;
+string? autoReconnectDeviceName = null;
 
 // JSON serialization options
 var jsonOptions = new JsonSerializerOptions
 {
     PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    PropertyNameCaseInsensitive = true, // Required for deserializing camelCase JSON to PascalCase C# properties
+    PropertyNameCaseInsensitive = true,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
 };
 
-// Hook up logging to stdout as JSON
+// Send JSON event to stdout
+void SendEvent(object eventObj)
+{
+    var json = JsonSerializer.Serialize(eventObj, jsonOptions);
+    Console.WriteLine(json);
+}
+
+void Log(string message, string level = "info")
+{
+    SendEvent(new { type = "log", level, message });
+}
+
+// Hook up FTMS server events
 server.OnLog += message =>
 {
-    var output = JsonSerializer.Serialize(new { log = message }, jsonOptions);
-    Console.WriteLine(output);
+    // Send in both old format (for backward compat) and new format
+    Console.WriteLine(JsonSerializer.Serialize(new { log = message }, jsonOptions));
 };
-
 server.OnStatus += (status, extra) =>
 {
+    // Send in old format for backward compatibility
     object outputObj;
     if (extra != null)
     {
-        // Merge status with extra properties
         var extraJson = JsonSerializer.Serialize(extra, jsonOptions);
         var extraDict = JsonSerializer.Deserialize<Dictionary<string, object>>(extraJson);
         extraDict!["status"] = status;
@@ -50,6 +85,234 @@ server.OnStatus += (status, extra) =>
     Console.WriteLine(JsonSerializer.Serialize(outputObj, jsonOptions));
 };
 
+// Hook up scanner events
+scanner.OnLog += message => Log(message);
+scanner.OnDeviceFound += device =>
+{
+    SendEvent(new
+    {
+        type = "deviceFound",
+        device = new
+        {
+            id = device.Id,
+            name = device.Name,
+            rssi = device.Rssi,
+            services = device.Services,
+            isFitnessDevice = device.IsFitnessDevice
+        }
+    });
+};
+scanner.OnScanComplete += count =>
+{
+    SendEvent(new { type = "scanComplete", devicesFound = count });
+};
+
+// Hook up connection events
+connection.OnLog += message => Log(message);
+connection.OnDataReceived += (data, source) =>
+{
+    // Send data event to Electron
+    SendEvent(new
+    {
+        type = "data",
+        power = data.Power > 0 ? data.Power : (int?)null,
+        cadence = data.Cadence > 0 ? data.Cadence : (double?)null,
+        heartRate = data.HeartRate > 0 ? data.HeartRate : (int?)null,
+        speed = data.Speed > 0 ? data.Speed : (double?)null,
+        resistance = data.Resistance > 0 ? data.Resistance : (int?)null,
+        source
+    });
+
+    // Also update FTMS server with the data
+    server.UpdateData(data);
+};
+connection.OnDisconnected += reason =>
+{
+    SendEvent(new { type = "disconnected", reason });
+
+    // Attempt auto-reconnect if enabled
+    if (autoReconnectEnabled && !string.IsNullOrEmpty(autoReconnectDeviceId))
+    {
+        Log($"Auto-reconnect enabled, will attempt to reconnect to {autoReconnectDeviceName}...");
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(2000); // Wait 2 seconds before reconnecting
+            if (autoReconnectEnabled && !connection.IsConnected)
+            {
+                var success = await connection.ConnectAsync(autoReconnectDeviceId);
+                if (success)
+                {
+                    SendEvent(new
+                    {
+                        type = "connected",
+                        device = new
+                        {
+                            id = connection.ConnectedDeviceId,
+                            name = connection.ConnectedDeviceName
+                        }
+                    });
+                }
+            }
+        });
+    }
+};
+
+// Handle commands from stdin
+async Task HandleCommand(string line)
+{
+    try
+    {
+        using var doc = JsonDocument.Parse(line);
+        var root = doc.RootElement;
+
+        // Check if this is the new protocol (has "type" field) or legacy data format
+        if (!root.TryGetProperty("type", out var typeElement))
+        {
+            // Legacy format: direct fitness data like {"power": 150, "cadence": 85, "heartRate": 120}
+            var legacyData = new FitnessData();
+            bool hasData = false;
+
+            if (root.TryGetProperty("power", out var powerEl))
+            {
+                legacyData.Power = powerEl.GetInt32();
+                hasData = true;
+            }
+            if (root.TryGetProperty("cadence", out var cadenceEl))
+            {
+                legacyData.Cadence = cadenceEl.GetDouble();
+                hasData = true;
+            }
+            if (root.TryGetProperty("heartRate", out var hrEl))
+            {
+                legacyData.HeartRate = hrEl.GetInt32();
+                hasData = true;
+            }
+            if (root.TryGetProperty("command", out var cmdEl) && cmdEl.GetString() == "stop")
+            {
+                cts.Cancel();
+                return;
+            }
+
+            if (hasData)
+            {
+                server.UpdateData(legacyData);
+            }
+            return;
+        }
+
+        var type = typeElement.GetString();
+
+        switch (type)
+        {
+            case "scan":
+                int duration = 10;
+                if (root.TryGetProperty("duration", out var durationEl))
+                    duration = durationEl.GetInt32();
+                scanner.StartScan(duration);
+                break;
+
+            case "stopScan":
+                scanner.StopScan();
+                break;
+
+            case "connect":
+                if (root.TryGetProperty("deviceId", out var deviceIdEl))
+                {
+                    var deviceId = deviceIdEl.GetString();
+                    string? deviceName = null;
+                    if (root.TryGetProperty("deviceName", out var deviceNameEl))
+                        deviceName = deviceNameEl.GetString();
+
+                    if (!string.IsNullOrEmpty(deviceId))
+                    {
+                        Log($"Connecting to {deviceName ?? deviceId}...");
+                        var success = await connection.ConnectAsync(deviceId);
+                        if (success)
+                        {
+                            SendEvent(new
+                            {
+                                type = "connected",
+                                device = new
+                                {
+                                    id = connection.ConnectedDeviceId,
+                                    name = connection.ConnectedDeviceName
+                                }
+                            });
+
+                            // Start FTMS broadcasting if not already running
+                            if (!server.IsRunning)
+                            {
+                                await server.StartAsync();
+                            }
+                        }
+                        else
+                        {
+                            SendEvent(new { type = "error", message = "Failed to connect to device" });
+                        }
+                    }
+                }
+                break;
+
+            case "disconnect":
+                connection.Disconnect();
+                SendEvent(new { type = "disconnected", reason = "User requested disconnect" });
+                break;
+
+            case "getStatus":
+                SendEvent(new
+                {
+                    type = "status",
+                    scanning = scanner.IsScanning,
+                    connected = connection.IsConnected,
+                    connectedDevice = connection.IsConnected ? new
+                    {
+                        id = connection.ConnectedDeviceId,
+                        name = connection.ConnectedDeviceName
+                    } : null,
+                    broadcasting = server.IsRunning,
+                    autoReconnect = autoReconnectEnabled,
+                    autoReconnectDevice = autoReconnectDeviceName
+                });
+                break;
+
+            case "setAutoReconnect":
+                if (root.TryGetProperty("enabled", out var enabledEl))
+                {
+                    autoReconnectEnabled = enabledEl.GetBoolean();
+                    if (autoReconnectEnabled)
+                    {
+                        if (root.TryGetProperty("deviceId", out var arDeviceIdEl))
+                            autoReconnectDeviceId = arDeviceIdEl.GetString();
+                        if (root.TryGetProperty("deviceName", out var arDeviceNameEl))
+                            autoReconnectDeviceName = arDeviceNameEl.GetString();
+                        Log($"Auto-reconnect enabled for {autoReconnectDeviceName}");
+                    }
+                    else
+                    {
+                        Log("Auto-reconnect disabled");
+                    }
+                }
+                break;
+
+            case "stop":
+                cts.Cancel();
+                break;
+
+            default:
+                Log($"Unknown command type: {type}", "warn");
+                break;
+        }
+    }
+    catch (JsonException ex)
+    {
+        Log($"Invalid JSON: {ex.Message}", "error");
+    }
+    catch (Exception ex)
+    {
+        Log($"Command error: {ex.Message}", "error");
+    }
+}
+
 // Handle Ctrl+C
 Console.CancelKeyPress += (s, e) =>
 {
@@ -57,26 +320,33 @@ Console.CancelKeyPress += (s, e) =>
     cts.Cancel();
 };
 
-// Enable FTMS packet debug logging (temporarily for debugging HR issue)
-FtmsDataBuilder.DebugLogging = true;
-FtmsDataBuilder.OnDebugLog = msg => Console.WriteLine(JsonSerializer.Serialize(new { log = msg }, jsonOptions));
-
-// Start the server
+// Start the FTMS server immediately (backward compatible behavior)
 bool started = await server.StartAsync();
 if (!started)
 {
-    Console.WriteLine(JsonSerializer.Serialize(new { status = "error", message = "Failed to start GATT server" }, jsonOptions));
+    SendEvent(new { type = "error", message = "Failed to start FTMS server" });
     return 1;
 }
 
-// Start notification loop (4Hz as per FTMS spec)
+// Send ready event
+SendEvent(new
+{
+    type = "ready",
+    version = "1.0.0",
+    platform = "windows"
+});
+
+// Start FTMS notification loop (4Hz as per FTMS spec)
 var notifyTask = Task.Run(async () =>
 {
     while (!cts.Token.IsCancellationRequested)
     {
         try
         {
-            await server.NotifyAsync();
+            if (server.IsRunning)
+            {
+                await server.NotifyAsync();
+            }
             await Task.Delay(250, cts.Token); // 4Hz
         }
         catch (OperationCanceledException)
@@ -85,13 +355,13 @@ var notifyTask = Task.Run(async () =>
         }
         catch (Exception ex)
         {
-            Console.WriteLine(JsonSerializer.Serialize(new { log = $"Notify loop error: {ex.Message}" }, jsonOptions));
+            Log($"Notify loop error: {ex.Message}", "error");
         }
     }
 });
 
-// Read stdin for data updates
-var stdinTask = Task.Run(() =>
+// Read stdin for commands
+var stdinTask = Task.Run(async () =>
 {
     try
     {
@@ -99,44 +369,12 @@ var stdinTask = Task.Run(() =>
         while ((line = Console.ReadLine()) != null && !cts.Token.IsCancellationRequested)
         {
             if (string.IsNullOrWhiteSpace(line)) continue;
-
-            try
-            {
-                var input = JsonSerializer.Deserialize<InputData>(line, jsonOptions);
-                if (input == null) continue;
-
-                // Check for stop command
-                if (input.Command == "stop")
-                {
-                    cts.Cancel();
-                    break;
-                }
-
-                // Update fitness data
-                var fitnessData = new FitnessData
-                {
-                    Power = input.Power ?? 0,
-                    Cadence = input.Cadence ?? 0,
-                    HeartRate = input.HeartRate ?? 0,
-                };
-
-                // Debug: log received heart rate (remove once verified working)
-                if (input.HeartRate.HasValue && input.HeartRate.Value > 0)
-                {
-                    Console.WriteLine(JsonSerializer.Serialize(new { log = $"Received HR: {input.HeartRate}" }, jsonOptions));
-                }
-
-                server.UpdateData(fitnessData);
-            }
-            catch (JsonException ex)
-            {
-                Console.WriteLine(JsonSerializer.Serialize(new { log = $"Invalid JSON: {ex.Message}" }, jsonOptions));
-            }
+            await HandleCommand(line);
         }
     }
     catch (Exception ex)
     {
-        Console.WriteLine(JsonSerializer.Serialize(new { log = $"Stdin reader error: {ex.Message}" }, jsonOptions));
+        Log($"Stdin reader error: {ex.Message}", "error");
     }
 });
 
@@ -152,6 +390,7 @@ catch (OperationCanceledException)
 
 // Cleanup
 cts.Cancel();
+connection.Disconnect();
 server.Stop();
 
 try
@@ -163,16 +402,5 @@ catch
     // Ignore cancellation exceptions
 }
 
-Console.WriteLine(JsonSerializer.Serialize(new { status = "stopped" }, jsonOptions));
+SendEvent(new { type = "log", level = "info", message = "Shutting down..." });
 return 0;
-
-/// <summary>
-/// Input data from stdin JSON.
-/// </summary>
-class InputData
-{
-    public int? Power { get; set; }
-    public double? Cadence { get; set; }
-    public int? HeartRate { get; set; }
-    public string? Command { get; set; }
-}

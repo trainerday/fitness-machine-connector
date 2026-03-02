@@ -1,11 +1,8 @@
 /**
  * Bluetooth FTMS Broadcaster
  *
- * Hybrid implementation that uses the best backend for each platform:
- * - macOS/Linux: Uses @abandonware/bleno for native BLE peripheral support
- * - Windows: Uses C# .NET FTMS broadcaster via subprocess
- *
- * This approach ensures optimal stability on each platform.
+ * Uses C# .NET FTMS broadcaster via subprocess for Windows.
+ * The .NET component handles BLE scanning, connection, and FTMS broadcasting.
  */
 
 import { spawn, ChildProcess } from 'child_process';
@@ -13,21 +10,12 @@ import path from 'path';
 import { app } from 'electron';
 import { EventEmitter } from 'events';
 import { FtmsOutput } from '../shared/types/fitness-data';
-import { BlenoBroadcaster } from './bleno-broadcaster';
 
 export interface BroadcasterStatus {
   state: 'stopped' | 'starting' | 'advertising' | 'connected' | 'error';
   deviceName?: string;
   clientAddress?: string;
   error?: string;
-}
-
-/**
- * Determine which backend to use based on platform
- */
-function shouldUseBleno(): boolean {
-  // Use bleno on macOS and Linux, Python on Windows
-  return process.platform === 'darwin' || process.platform === 'linux';
 }
 
 /**
@@ -226,25 +214,16 @@ class WindowsBroadcaster extends EventEmitter {
 
 /**
  * Main BluetoothBroadcaster class
- * Automatically selects the best backend based on platform
+ * Uses the .NET backend for BLE operations
  */
 export class BluetoothBroadcaster extends EventEmitter {
-  private backend: BlenoBroadcaster | WindowsBroadcaster;
-  private backendType: 'bleno' | 'windows';
+  private backend: WindowsBroadcaster;
 
   constructor() {
     super();
 
-    // Choose backend based on platform
-    if (shouldUseBleno()) {
-      console.log('Using Bleno backend for BLE broadcasting (macOS/Linux)');
-      this.backend = new BlenoBroadcaster();
-      this.backendType = 'bleno';
-    } else {
-      console.log('Using Windows .NET backend for BLE broadcasting');
-      this.backend = new WindowsBroadcaster();
-      this.backendType = 'windows';
-    }
+    console.log('Using .NET backend for BLE broadcasting');
+    this.backend = new WindowsBroadcaster();
 
     // Forward events from backend
     this.backend.on('status', (status: BroadcasterStatus) => {
@@ -289,12 +268,5 @@ export class BluetoothBroadcaster extends EventEmitter {
    */
   isRunning(): boolean {
     return this.backend.isRunning();
-  }
-
-  /**
-   * Get the backend type being used
-   */
-  getBackendType(): 'bleno' | 'windows' {
-    return this.backendType;
   }
 }
