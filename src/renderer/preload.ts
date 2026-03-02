@@ -12,6 +12,13 @@ interface BroadcasterStatus {
   error?: string;
 }
 
+// Persisted device type (matches main process)
+interface PersistedDevice {
+  id: string;
+  name: string;
+  lastConnected: number;
+}
+
 // Expose Bluetooth-related IPC to renderer
 contextBridge.exposeInMainWorld('electronAPI', {
   // Signal that a new scan is starting
@@ -73,5 +80,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
   removeBroadcasterListeners: () => {
     ipcRenderer.removeAllListeners('broadcaster-status');
     ipcRenderer.removeAllListeners('broadcaster-log');
+  },
+
+  // Device persistence
+  saveLastDevice: (device: { id: string; name: string }) => {
+    ipcRenderer.send('save-last-device', device);
+  },
+
+  loadLastDevice: (): Promise<PersistedDevice | null> => {
+    return ipcRenderer.invoke('load-last-device');
+  },
+
+  clearLastDevice: () => {
+    ipcRenderer.send('clear-last-device');
+  },
+
+  // Auto-reconnect listener (triggered by main process on wake or startup)
+  onAttemptReconnect: (callback: (device: PersistedDevice) => void) => {
+    ipcRenderer.on('attempt-reconnect', (_event, device) => {
+      callback(device);
+    });
+  },
+
+  removeReconnectListener: () => {
+    ipcRenderer.removeAllListeners('attempt-reconnect');
   },
 });

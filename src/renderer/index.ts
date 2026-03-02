@@ -36,6 +36,12 @@ let pendingBluetoothDevice: BluetoothDevice | null = null;
 /** Tracks if we're waiting for scan results (prevents showing list after selection) */
 let awaitingScanResults = false;
 
+/** Tracks if we're in auto-reconnect mode (silent scan, no UI) */
+let autoReconnectMode = false;
+
+/** The device name we're trying to auto-reconnect to */
+let autoReconnectDeviceName: string | null = null;
+
 /** Latest fitness data, updated on every BLE event but only consumed once per second */
 let latestFitnessData: FitnessData | null = null;
 
@@ -85,12 +91,17 @@ function checkBluetoothAvailability(): boolean {
  * Can be clicked anytime to restart scanning.
  */
 async function handleScan(): Promise<void> {
-  activityLog.log('Scanning for Bluetooth devices...');
+  // If user manually clicks scan, exit auto-reconnect mode
+  if (!autoReconnectMode) {
+    activityLog.log('Scanning for Bluetooth devices...');
+  }
 
-  // Clear previous results and show scanning state
+  // Clear previous results and show scanning state (unless in auto-reconnect mode)
   deviceList.clear();
-  deviceList.setScanning(true);
-  statusIndicator.setScanning(true);
+  if (!autoReconnectMode) {
+    deviceList.setScanning(true);
+    statusIndicator.setScanning(true);
+  }
   awaitingScanResults = true;
 
   // Tell main process to start fresh scan
@@ -106,11 +117,19 @@ async function handleScan(): Promise<void> {
       statusIndicator.setScanning(false);
       activityLog.log(`Connecting to ${pendingBluetoothDevice.name || 'Unknown'}...`);
       await connectToDevice(pendingBluetoothDevice);
+    } else if (autoReconnectMode) {
+      // Scan completed without finding the auto-reconnect target
+      activityLog.log(`Could not find ${autoReconnectDeviceName} - device may be off or out of range`);
+      autoReconnectMode = false;
+      autoReconnectDeviceName = null;
     }
   } catch (error) {
     activityLog.log(`Scan error: ${(error as Error).message}`);
     deviceList.setScanning(false);
     statusIndicator.setScanning(false);
+    // Reset auto-reconnect state on error
+    autoReconnectMode = false;
+    autoReconnectDeviceName = null;
   }
 }
 
@@ -160,9 +179,16 @@ async function connectToDevice(device: BluetoothDevice): Promise<void> {
 
 /**
  * Handle disconnect button click.
+ * Clears saved device since user explicitly chose to disconnect.
  */
 async function handleDisconnect(): Promise<void> {
   activityLog.log('Disconnecting...');
+
+  // Clear saved device - user explicitly disconnected
+  if (window.electronAPI) {
+    window.electronAPI.clearLastDevice();
+  }
+
   await fitnessReader.disconnect();
   activityLog.log('Disconnected');
   statusIndicator.setDisconnected();
@@ -201,6 +227,17 @@ function setupFitnessReaderCallbacks(): void {
     if (connected && deviceName) {
       statusIndicator.setConnected(deviceName);
       startUpdateInterval();
+
+      // Save connected device for auto-reconnection
+      const deviceInfo = fitnessReader.getConnectedDevice();
+      console.log('[Renderer] Device info for save:', deviceInfo);
+      if (window.electronAPI && deviceInfo) {
+        console.log('[Renderer] Saving device:', deviceInfo.name, deviceInfo.id);
+        window.electronAPI.saveLastDevice(deviceInfo);
+      } else {
+        console.log('[Renderer] Could not save device - electronAPI:', !!window.electronAPI, 'deviceInfo:', !!deviceInfo);
+      }
+
       // Auto-start FTMS broadcast when device connects
       if (window.electronAPI) {
         activityLog.log('Starting FTMS broadcast...');
@@ -232,9 +269,28 @@ function setupIpcListeners(): void {
   window.electronAPI.onBluetoothDeviceFound((device: BluetoothDeviceInfo) => {
     console.log(`[Renderer] Device found: ${device.deviceName || 'Unknown'} (${device.deviceId})`);
 
-    // Only add devices if we're still waiting for scan results
+    // Check if this is the device we're trying to auto-reconnect to
+    if (autoReconnectMode && autoReconnectDeviceName && device.deviceName === autoReconnectDeviceName) {
+      console.log(`[Renderer] Found auto-reconnect target: ${device.deviceName}`);
+      activityLog.log(`Found ${device.deviceName}, connecting...`);
+
+      // Reset auto-reconnect state
+      autoReconnectMode = false;
+      autoReconnectDeviceName = null;
+
+      // Auto-select this device (this will trigger connection)
+      handleDeviceSelection(device.deviceId, device.deviceName);
+      return;
+    }
+
+    // Only add devices to the list if we're waiting for scan results (not in auto-reconnect mode)
     if (!awaitingScanResults) {
       console.log('[Renderer] Ignoring device - not awaiting scan results');
+      return;
+    }
+
+    // Don't show device list during auto-reconnect
+    if (autoReconnectMode) {
       return;
     }
 
@@ -250,6 +306,27 @@ function setupIpcListeners(): void {
   // Listen for broadcaster log messages
   window.electronAPI.onBroadcasterLog((message) => {
     activityLog.log(`Broadcaster: ${message}`);
+  });
+
+  // Listen for auto-reconnect requests (from wake or startup)
+  console.log('[Renderer] Setting up onAttemptReconnect listener');
+  window.electronAPI.onAttemptReconnect(async (device) => {
+    console.log('[Renderer] Received attempt-reconnect:', device);
+
+    // Don't try to reconnect if already connected
+    if (fitnessReader.isConnected()) {
+      console.log('[Renderer] Already connected, skipping reconnect');
+      return;
+    }
+
+    // Set up auto-reconnect mode - will silently scan and connect when device is found
+    autoReconnectMode = true;
+    autoReconnectDeviceName = device.name;
+    activityLog.log(`Looking for ${device.name}...`);
+
+    // Trigger a scan - the device discovery handler will auto-connect when it finds the device
+    console.log('[Renderer] Starting silent scan for auto-reconnect');
+    handleScan();
   });
 }
 

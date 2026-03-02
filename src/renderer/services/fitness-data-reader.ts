@@ -104,6 +104,23 @@ export class FitnessDataReader {
   }
 
   /**
+   * Attempt to reconnect to a previously paired device by name.
+   * This is used for auto-reconnection after sleep/wake or app restart.
+   * We use name instead of ID because Web Bluetooth IDs change between sessions.
+   * Returns true if reconnection successful, false otherwise.
+   */
+  async reconnect(deviceName: string): Promise<boolean> {
+    return bluetoothService.reconnectToDevice(deviceName);
+  }
+
+  /**
+   * Get info about the currently connected device.
+   */
+  getConnectedDevice(): { name: string; id: string } | null {
+    return bluetoothService.getConnectedDevice();
+  }
+
+  /**
    * Configure BluetoothService with fitness-specific subscriptions.
    * Uses device specs to determine which characteristics to subscribe to.
    */

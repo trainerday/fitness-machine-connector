@@ -7,6 +7,7 @@ import { BluetoothDeviceManager } from './bluetooth-device-manager';
 import { BluetoothBroadcaster, BroadcasterStatus } from './bluetooth-broadcaster';
 import { FtmsOutput } from '../shared/types/fitness-data';
 import { startPowerSaveBlocker, stopPowerSaveBlocker } from './power-manager';
+import { saveLastDevice, loadLastDevice, clearLastDevice, PersistedDevice } from './device-persistence';
 
 export function setupIpcHandlers(
   deviceManager: BluetoothDeviceManager,
@@ -59,5 +60,19 @@ export function setupIpcHandlers(
     windows.forEach((win) => {
       win.webContents.send('broadcaster-log', message);
     });
+  });
+
+  // Device persistence handlers
+  ipcMain.on('save-last-device', (_event, device: { id: string; name: string }) => {
+    console.log('[IPC] Received save-last-device:', device);
+    saveLastDevice(device);
+  });
+
+  ipcMain.handle('load-last-device', (): PersistedDevice | null => {
+    return loadLastDevice();
+  });
+
+  ipcMain.on('clear-last-device', () => {
+    clearLastDevice();
   });
 }

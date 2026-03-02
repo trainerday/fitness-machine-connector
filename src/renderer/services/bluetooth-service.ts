@@ -162,6 +162,54 @@ class BluetoothService {
   }
 
   /**
+   * Attempt to reconnect to a previously paired device by name.
+   * Uses navigator.bluetooth.getDevices() which doesn't require user interaction.
+   * We match by name because Web Bluetooth device IDs can change between sessions.
+   * Returns true if reconnection successful, false otherwise.
+   */
+  async reconnectToDevice(deviceName: string): Promise<boolean> {
+    if (!this.isAvailable()) {
+      console.log('[BluetoothService] Bluetooth not available for reconnect');
+      return false;
+    }
+
+    try {
+      // getDevices() returns previously paired devices without user interaction
+      const devices = await navigator.bluetooth.getDevices();
+      console.log(`[BluetoothService] Found ${devices.length} previously paired device(s)`);
+      devices.forEach((d) => console.log(`[BluetoothService]   - ${d.name} (${d.id})`));
+
+      // Match by name since device IDs change between sessions
+      const device = devices.find((d) => d.name === deviceName);
+
+      if (!device) {
+        console.log(`[BluetoothService] Device "${deviceName}" not found in paired devices`);
+        return false;
+      }
+
+      console.log(`[BluetoothService] Found device for reconnect: ${device.name} (${device.id})`);
+
+      // Connect to the device
+      await this.connect(device);
+      return true;
+    } catch (error) {
+      console.error('[BluetoothService] Reconnection failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get the currently connected device info
+   */
+  getConnectedDevice(): DeviceInfo | null {
+    if (!this.connectedDevice) return null;
+    return {
+      name: this.connectedDevice.name || 'Unknown Device',
+      id: this.connectedDevice.id,
+    };
+  }
+
+  /**
    * Check if currently connected to a device.
    */
   isConnected(): boolean {
