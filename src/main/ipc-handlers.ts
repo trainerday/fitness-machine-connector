@@ -46,6 +46,11 @@ export function setupIpcHandlers(
     stopPowerSaveBlocker();
   });
 
+  ipcMain.on('broadcaster-disconnect', () => {
+    console.log('[IPC] broadcaster-disconnect received');
+    broadcaster.disconnect();
+  });
+
   ipcMain.on('broadcaster-send-data', (_event, data: FtmsOutput) => {
     broadcaster.sendData(data);
   });

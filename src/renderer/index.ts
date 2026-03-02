@@ -187,9 +187,20 @@ async function handleDisconnect(): Promise<void> {
   // Clear saved device - user explicitly disconnected
   if (window.electronAPI) {
     window.electronAPI.clearLastDevice();
+
+    // Stop FTMS broadcast
+    window.electronAPI.broadcasterStop();
+
+    // Tell .NET backend to disconnect from source device
+    window.electronAPI.broadcasterDisconnect();
   }
 
+  // Stop the update interval (stops data display updates)
+  stopUpdateInterval();
+
+  // Disconnect Web Bluetooth connection (if any)
   await fitnessReader.disconnect();
+
   activityLog.log('Disconnected');
   statusIndicator.setDisconnected();
   dataDisplay.reset();

@@ -57,6 +57,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send('broadcaster-stop');
   },
 
+  broadcasterDisconnect: () => {
+    ipcRenderer.send('broadcaster-disconnect');
+  },
+
   broadcasterSendData: (data: FtmsOutput) => {
     ipcRenderer.send('broadcaster-send-data', data);
   },

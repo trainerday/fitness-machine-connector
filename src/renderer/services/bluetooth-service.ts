@@ -154,11 +154,18 @@ class BluetoothService {
    * Disconnect from the current device.
    */
   async disconnect(): Promise<void> {
+    const wasConnected = this.connectedDevice !== null;
+
     if (this.gattServer?.connected) {
       this.gattServer.disconnect();
+      // Note: gattserverdisconnected event will call handleDisconnect()
+    } else if (wasConnected) {
+      // If we had a device but no active GATT connection (e.g., .NET path),
+      // manually trigger the disconnect notification
+      this.connectedDevice = null;
+      this.gattServer = null;
+      this.notifyConnectionChange(false);
     }
-    this.connectedDevice = null;
-    this.gattServer = null;
   }
 
   /**

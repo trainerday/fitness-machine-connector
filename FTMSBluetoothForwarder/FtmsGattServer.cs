@@ -536,6 +536,7 @@ namespace FTMSBluetoothForwarder
             else
             {
                 Log("[FTMS] All clients disconnected from Indoor Bike Data");
+                SendStatus("advertising", new { device_name = DeviceName });
             }
         }
 

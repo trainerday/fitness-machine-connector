@@ -34,6 +34,15 @@ export interface BroadcasterStatus {
 }
 
 /**
+ * Persisted device info for auto-reconnect
+ */
+export interface PersistedDevice {
+  id: string;
+  name: string;
+  lastConnected: number;
+}
+
+/**
  * Electron API exposed via preload script
  */
 export interface ElectronAPI {
@@ -47,11 +56,27 @@ export interface ElectronAPI {
   // FTMS Broadcaster
   broadcasterStart: () => void;
   broadcasterStop: () => void;
+  broadcasterDisconnect: () => void;
   broadcasterSendData: (data: FtmsOutput) => void;
   broadcasterGetStatus: () => Promise<BroadcasterStatus>;
   onBroadcasterStatus: (callback: (status: BroadcasterStatus) => void) => void;
   onBroadcasterLog: (callback: (message: string) => void) => void;
   removeBroadcasterListeners: () => void;
+
+  // Device persistence
+  saveLastDevice: (device: { id: string; name: string }) => void;
+  loadLastDevice: () => Promise<PersistedDevice | null>;
+  clearLastDevice: () => void;
+
+  // Auto-reconnect
+  onAttemptReconnect: (callback: (device: PersistedDevice) => void) => void;
+  removeReconnectListener: () => void;
+
+  // .NET backend events
+  onDeviceConnectedViaDotnet: (callback: (device: { id: string; name: string }) => void) => void;
+  onFitnessDataFromDotnet: (callback: (data: { power?: number; cadence?: number; heartRate?: number; source?: string }) => void) => void;
+  onAutoReconnectFailed: (callback: (info: { deviceName: string; reason: string }) => void) => void;
+  removeDotnetListeners: () => void;
 }
 
 declare global {
