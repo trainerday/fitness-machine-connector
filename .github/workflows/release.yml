@@ -263,8 +263,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Skip C# FTMS build on Linux - it's Windows-only
+      # Just build the Electron app directly
       - name: Build Electron app
-        run: npm run make
+        run: npx electron-forge make
 
       - name: Rename artifacts
         run: |
