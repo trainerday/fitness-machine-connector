@@ -36,7 +36,7 @@ export class StatusIndicator {
    */
   setConnected(deviceName: string): void {
     this.deviceStatus.textContent = deviceName || 'Connected';
-    this.deviceStatus.classList.remove('disconnected');
+    this.deviceStatus.classList.remove('disconnected', 'lookout');
     this.deviceStatus.classList.add('connected');
     this.scanBtn.disabled = true;
     this.disconnectBtn.disabled = false;
@@ -47,10 +47,32 @@ export class StatusIndicator {
    */
   setDisconnected(): void {
     this.deviceStatus.textContent = 'Not Connected';
-    this.deviceStatus.classList.remove('connected');
+    this.deviceStatus.classList.remove('connected', 'lookout');
     this.deviceStatus.classList.add('disconnected');
     this.scanBtn.disabled = false;
     this.disconnectBtn.disabled = true;
+  }
+
+  /**
+   * Update UI to show lookout mode (actively watching for device)
+   */
+  setLookout(deviceName: string): void {
+    this.deviceStatus.textContent = `Watching for ${deviceName}...`;
+    this.deviceStatus.classList.remove('connected', 'disconnected');
+    this.deviceStatus.classList.add('lookout');
+    // Keep scan button enabled so user can manually override
+    this.scanBtn.disabled = false;
+    this.disconnectBtn.disabled = true;
+  }
+
+  /**
+   * Clear lookout state (go back to disconnected)
+   */
+  clearLookout(): void {
+    // Only clear if currently in lookout mode
+    if (this.deviceStatus.classList.contains('lookout')) {
+      this.setDisconnected();
+    }
   }
 
   /**

@@ -76,6 +76,7 @@ export interface ElectronAPI {
   onDeviceConnectedViaDotnet: (callback: (device: { id: string; name: string }) => void) => void;
   onFitnessDataFromDotnet: (callback: (data: { power?: number; cadence?: number; heartRate?: number; source?: string }) => void) => void;
   onAutoReconnectFailed: (callback: (info: { deviceName: string; reason: string }) => void) => void;
+  onLookoutStatus: (callback: (status: { active: boolean; deviceName?: string }) => void) => void;
   removeDotnetListeners: () => void;
 }
 

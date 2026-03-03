@@ -2,7 +2,7 @@
  * Main process entry point - handles window lifecycle
  */
 
-import { app, BrowserWindow, Tray, Menu, nativeImage, powerMonitor, session } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage, powerMonitor, session, ipcMain } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { BluetoothDeviceManager } from './bluetooth-device-manager';
@@ -238,107 +238,176 @@ function setupPowerMonitor(): void {
   });
 }
 
-// Track auto-reconnect state
-let autoReconnectTimeout: NodeJS.Timeout | null = null;
-let autoReconnectInProgress = false;
+// =============================================================================
+// DEVICE LOOKOUT MODE
+// =============================================================================
+// Continuously watches for the saved device in the background.
+// When the device appears (e.g., user turns on their bike), auto-connects.
+// This creates a "virtual assistant" experience - user just turns on equipment.
+
+let lookoutInterval: NodeJS.Timeout | null = null;
+let lookoutActive = false;
+let lookoutDeviceName: string | null = null;
+let isConnected = false;
+
+const LOOKOUT_SCAN_DURATION = 5; // Short 5-second scans
+const LOOKOUT_INTERVAL_MS = 8000; // Scan every 8 seconds (5s scan + 3s pause)
 
 /**
- * Attempt to auto-reconnect to the last connected device
- * Uses .NET backend for scanning (bypasses Web Bluetooth gesture requirement)
+ * Start lookout mode - continuously scan for the saved device
+ * Runs silently in the background until device is found or user takes action
  */
-function attemptAutoReconnect(): void {
+function startLookoutMode(): void {
   const savedDevice = loadLastDevice();
 
   if (!savedDevice) {
-    console.log('[Main] No saved device for auto-reconnect');
+    console.log('[Lookout] No saved device, skipping lookout mode');
     return;
   }
 
-  // Don't start another auto-reconnect if one is already in progress
-  if (autoReconnectInProgress) {
-    console.log('[Main] Auto-reconnect already in progress, skipping');
+  if (lookoutActive) {
+    console.log('[Lookout] Already active');
     return;
   }
 
-  console.log(`[Main] Attempting auto-reconnect to: ${savedDevice.name} (via .NET)`);
-  autoReconnectInProgress = true;
+  if (isConnected) {
+    console.log('[Lookout] Already connected, skipping lookout mode');
+    return;
+  }
+
+  console.log(`[Lookout] Starting lookout for: ${savedDevice.name}`);
+  lookoutActive = true;
+  lookoutDeviceName = savedDevice.name.toLowerCase();
 
   // Make sure broadcaster is running
   if (!broadcaster.isRunning()) {
-    console.log('[Main] Starting .NET backend for auto-reconnect...');
+    console.log('[Lookout] Starting .NET backend...');
     broadcaster.start();
   }
 
-  // Set up event listeners for this auto-reconnect attempt
-  const targetDeviceName = savedDevice.name.toLowerCase();
-  let deviceConnected = false;
+  // Set up persistent listeners
+  broadcaster.on('deviceFound', onLookoutDeviceFound);
+  broadcaster.on('deviceConnected', onLookoutDeviceConnected);
 
-  // Cleanup function to remove all listeners and clear timeout
-  const cleanup = () => {
-    autoReconnectInProgress = false;
-    if (autoReconnectTimeout) {
-      clearTimeout(autoReconnectTimeout);
-      autoReconnectTimeout = null;
-    }
-    broadcaster.removeListener('deviceFound', onDeviceFound);
-    broadcaster.removeListener('scanComplete', onScanComplete);
-    broadcaster.removeListener('deviceConnected', onDeviceConnected);
-  };
-
-  const onDeviceFound = (device: { id: string; name: string; isFitnessDevice?: boolean }) => {
-    console.log(`[Main] .NET found device: ${device.name} (fitness: ${device.isFitnessDevice})`);
-
-    // Check if this is our target device
-    if (device.name.toLowerCase() === targetDeviceName) {
-      console.log(`[Main] Target device found! ID: ${device.id}`);
-      // Stop scanning and connect
-      broadcaster.stopScan();
-      broadcaster.connect(device.id, device.name);
-    }
-  };
-
-  const onScanComplete = (count: number) => {
-    console.log(`[Main] .NET scan complete: ${count} devices found`);
-    // Don't cleanup yet - wait for connection or timeout
-  };
-
-  const onDeviceConnected = (device: { id: string; name: string }) => {
-    console.log(`[Main] .NET connected to: ${device.name}`);
-    deviceConnected = true;
-    cleanup();
-
-    // Notify renderer that device is connected
-    mainWindow?.webContents.send('device-connected-via-dotnet', device);
-  };
-
-  // Set up listeners
-  broadcaster.on('deviceFound', onDeviceFound);
-  broadcaster.on('scanComplete', onScanComplete);
-  broadcaster.on('deviceConnected', onDeviceConnected);
-
-  // Configure auto-reconnect in .NET (for future disconnects)
+  // Configure auto-reconnect in .NET
   broadcaster.setAutoReconnect(true, savedDevice.id, savedDevice.name);
 
-  // FAILSAFE: Set a timeout - if device not connected within 30 seconds, give up
-  const RECONNECT_TIMEOUT_MS = 30000; // 30 seconds
-  autoReconnectTimeout = setTimeout(() => {
-    if (!deviceConnected) {
-      console.log(`[Main] Auto-reconnect timeout - ${savedDevice.name} not found within ${RECONNECT_TIMEOUT_MS / 1000} seconds`);
-      broadcaster.stopScan();
-      cleanup();
+  // Notify renderer that lookout is active
+  mainWindow?.webContents.send('lookout-status', {
+    active: true,
+    deviceName: savedDevice.name,
+  });
 
-      // Notify renderer to show a message to the user
-      mainWindow?.webContents.send('auto-reconnect-failed', {
-        deviceName: savedDevice.name,
-        reason: 'Device not found. Make sure it is powered on and nearby.',
-      });
+  // Start the first scan immediately
+  doLookoutScan();
+
+  // Set up repeating scans
+  lookoutInterval = setInterval(() => {
+    if (lookoutActive && !isConnected) {
+      doLookoutScan();
     }
-  }, RECONNECT_TIMEOUT_MS);
-
-  // Start scanning via .NET
-  console.log('[Main] Starting .NET BLE scan...');
-  broadcaster.scan(20); // 20 second scan (less than timeout)
+  }, LOOKOUT_INTERVAL_MS);
 }
+
+/**
+ * Perform a single lookout scan
+ */
+function doLookoutScan(): void {
+  if (!lookoutActive || isConnected) return;
+
+  console.log(`[Lookout] Scanning for ${lookoutDeviceName}...`);
+  broadcaster.scan(LOOKOUT_SCAN_DURATION);
+}
+
+/**
+ * Handle device found during lookout
+ */
+function onLookoutDeviceFound(device: { id: string; name: string; isFitnessDevice?: boolean }): void {
+  if (!lookoutActive || !lookoutDeviceName) return;
+
+  // Check if this is our target device
+  if (device.name.toLowerCase() === lookoutDeviceName) {
+    console.log(`[Lookout] Target device found! Connecting to ${device.name}...`);
+    broadcaster.stopScan();
+    broadcaster.connect(device.id, device.name);
+  }
+}
+
+/**
+ * Handle successful connection during lookout
+ */
+function onLookoutDeviceConnected(device: { id: string; name: string }): void {
+  console.log(`[Lookout] Connected to: ${device.name}`);
+  isConnected = true;
+  stopLookoutMode();
+
+  // Notify renderer that device is connected
+  mainWindow?.webContents.send('device-connected-via-dotnet', device);
+}
+
+/**
+ * Stop lookout mode
+ * Called when: device connects, user manually scans, or user disconnects
+ */
+function stopLookoutMode(): void {
+  if (!lookoutActive) return;
+
+  console.log('[Lookout] Stopping lookout mode');
+  lookoutActive = false;
+  lookoutDeviceName = null;
+
+  if (lookoutInterval) {
+    clearInterval(lookoutInterval);
+    lookoutInterval = null;
+  }
+
+  broadcaster.removeListener('deviceFound', onLookoutDeviceFound);
+  broadcaster.removeListener('deviceConnected', onLookoutDeviceConnected);
+  broadcaster.stopScan();
+
+  // Notify renderer
+  mainWindow?.webContents.send('lookout-status', { active: false });
+}
+
+/**
+ * Called when user manually initiates a scan - pause lookout
+ */
+function pauseLookoutForManualScan(): void {
+  if (lookoutActive) {
+    console.log('[Lookout] Pausing for manual scan');
+    stopLookoutMode();
+  }
+}
+
+/**
+ * Called when device disconnects - restart lookout
+ */
+function onDeviceDisconnected(): void {
+  console.log('[Lookout] Device disconnected, restarting lookout...');
+  isConnected = false;
+
+  // Small delay before restarting lookout (let things settle)
+  setTimeout(() => {
+    if (!isConnected) {
+      startLookoutMode();
+    }
+  }, 2000);
+}
+
+// Listen for disconnection events from broadcaster
+broadcaster.on('deviceDisconnected', onDeviceDisconnected);
+
+/**
+ * Legacy function name for compatibility - now starts lookout mode
+ */
+function attemptAutoReconnect(): void {
+  startLookoutMode();
+}
+
+// Pause lookout when user manually initiates a scan
+ipcMain.on('start-bluetooth-scan', () => {
+  pauseLookoutForManualScan();
+});
 
 app.on('window-all-closed', () => {
   // Don't quit when all windows are closed - we're running in the tray

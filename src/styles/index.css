@@ -88,6 +88,17 @@ section {
   color: #ffc107;
 }
 
+.status-value.lookout {
+  background: rgba(255, 193, 7, 0.2);
+  color: #ffc107;
+  animation: lookout-pulse 2s ease-in-out infinite;
+}
+
+@keyframes lookout-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 /* Buttons */
 .controls {
   display: flex;

@@ -129,9 +129,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     });
   },
 
+  // Lookout mode status (background scanning for saved device)
+  onLookoutStatus: (callback: (status: { active: boolean; deviceName?: string }) => void) => {
+    ipcRenderer.on('lookout-status', (_event, status) => {
+      callback(status);
+    });
+  },
+
   removeDotnetListeners: () => {
     ipcRenderer.removeAllListeners('device-connected-via-dotnet');
     ipcRenderer.removeAllListeners('fitness-data-from-dotnet');
     ipcRenderer.removeAllListeners('auto-reconnect-failed');
+    ipcRenderer.removeAllListeners('lookout-status');
   },
 });

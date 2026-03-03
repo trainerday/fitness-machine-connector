@@ -379,6 +379,17 @@ function setupIpcListeners(): void {
     // Show alert to user
     alert(`Could not reconnect to "${info.deviceName}"\n\n${info.reason}\n\nClick "Scan for Devices" to connect manually.`);
   });
+
+  // Listen for lookout mode status (background scanning)
+  window.electronAPI.onLookoutStatus((status) => {
+    console.log('[Renderer] Lookout status:', status);
+    if (status.active && status.deviceName) {
+      activityLog.log(`Looking for ${status.deviceName}...`);
+      statusIndicator.setLookout(status.deviceName);
+    } else {
+      statusIndicator.clearLookout();
+    }
+  });
 }
 
 // =============================================================================
