@@ -51,6 +51,12 @@ class WindowsBroadcaster extends EventEmitter {
   private connectedDevice: DiscoveredDevice | null = null;
   private isScanning = false;
 
+  // Broadcast state tracking to prevent race conditions
+  private isBroadcasting = false;
+  private broadcastStopTime = 0;
+  private pendingBroadcastStart: NodeJS.Timeout | null = null;
+  private static readonly BROADCAST_COOLDOWN_MS = 1000; // Wait 1s after stop before allowing start
+
   constructor() {
     super();
   }
@@ -182,8 +188,12 @@ class WindowsBroadcaster extends EventEmitter {
               // Update status based on FTMS state
               if (message.state === 'advertising') {
                 this.status = { state: 'advertising' };
+                this.isBroadcasting = true;
               } else if (message.state === 'connected') {
                 this.status = { state: 'connected', clientAddress: message.clientAddress };
+                this.isBroadcasting = true;
+              } else if (message.state === 'stopped') {
+                this.isBroadcasting = false;
               }
               this.emit('status', this.status);
               break;
@@ -206,12 +216,15 @@ class WindowsBroadcaster extends EventEmitter {
           switch (message.status) {
             case 'advertising':
               this.status = { state: 'advertising', deviceName: message.device_name };
+              this.isBroadcasting = true;
               break;
             case 'connected':
               this.status = { state: 'connected', deviceName: message.device_name, clientAddress: message.client };
+              this.isBroadcasting = true;
               break;
             case 'stopped':
               this.status = { state: 'stopped' };
+              this.isBroadcasting = false;
               break;
           }
           this.emit('status', this.status);
@@ -226,6 +239,14 @@ class WindowsBroadcaster extends EventEmitter {
     this.process = null;
     this.isScanning = false;
     this.connectedDevice = null;
+    this.isBroadcasting = false;
+    this.broadcastStopTime = 0;
+
+    // Cancel any pending broadcast start
+    if (this.pendingBroadcastStart) {
+      clearTimeout(this.pendingBroadcastStart);
+      this.pendingBroadcastStart = null;
+    }
 
     if (this.status.state !== 'stopped' && this.status.state !== 'error') {
       if (this.restartAttempts < this.maxRestartAttempts) {
@@ -298,9 +319,37 @@ class WindowsBroadcaster extends EventEmitter {
 
   /**
    * Start FTMS broadcasting explicitly
+   * Includes debouncing to prevent race conditions with stop
    */
   startBroadcast(): void {
+    // Cancel any pending start
+    if (this.pendingBroadcastStart) {
+      clearTimeout(this.pendingBroadcastStart);
+      this.pendingBroadcastStart = null;
+    }
+
+    // Check if we need to wait for cooldown after a recent stop
+    const timeSinceStop = Date.now() - this.broadcastStopTime;
+    if (this.broadcastStopTime > 0 && timeSinceStop < WindowsBroadcaster.BROADCAST_COOLDOWN_MS) {
+      const waitTime = WindowsBroadcaster.BROADCAST_COOLDOWN_MS - timeSinceStop;
+      console.log(`[BLE] Waiting ${waitTime}ms for broadcast cooldown before starting...`);
+      this.pendingBroadcastStart = setTimeout(() => {
+        this.pendingBroadcastStart = null;
+        this.doStartBroadcast();
+      }, waitTime);
+      return;
+    }
+
+    this.doStartBroadcast();
+  }
+
+  private doStartBroadcast(): void {
+    if (this.isBroadcasting) {
+      console.log('[BLE] Broadcast already running, skipping start');
+      return;
+    }
     console.log('[BLE] Sending startBroadcast command...');
+    this.isBroadcasting = true;
     this.sendCommand({ type: 'startBroadcast' });
   }
 
@@ -308,7 +357,21 @@ class WindowsBroadcaster extends EventEmitter {
    * Stop FTMS broadcasting
    */
   stopBroadcast(): void {
+    // Cancel any pending start
+    if (this.pendingBroadcastStart) {
+      clearTimeout(this.pendingBroadcastStart);
+      this.pendingBroadcastStart = null;
+      console.log('[BLE] Cancelled pending broadcast start');
+    }
+
+    if (!this.isBroadcasting) {
+      console.log('[BLE] Broadcast not running, skipping stop');
+      return;
+    }
+
     console.log('[BLE] Sending stopBroadcast command...');
+    this.isBroadcasting = false;
+    this.broadcastStopTime = Date.now();
     this.sendCommand({ type: 'stopBroadcast' });
   }
 
