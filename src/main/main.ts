@@ -39,17 +39,18 @@ const broadcaster = new BluetoothBroadcaster();
 setupIpcHandlers(deviceManager, broadcaster);
 
 /**
- * Create a simple tray icon programmatically
- * Uses a base64-encoded 16x16 PNG that works on Windows and macOS
+ * Load the tray icon from disk.
+ * In dev: src/assets/tray-icon.png (relative to project root)
+ * In prod: tray-icon.png copied to the app's resources folder via extraResource
  */
-function createTrayIcon(): nativeImage {
-  // A simple 16x16 cyan circle PNG (base64 encoded)
-  // This is a placeholder - replace with a proper icon file for production
-  const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAbwAAAG8B8aLcQwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAEKSURBVDiNpZMxSwNBEIW/2dwlRhQLC4sUgpVYWFj4AyxE8A9Y+QMs/QMWFoKFhYWFIFhYWAQLC0GwsBBBsLAQBAsLQbAQc7e7FnfJ5S53AT9YZob35r2ZWfg3JL9EOAvcAOfANrAErABV4BPogrcDfAPnwCJQAcrAF3AKPAOOE+apiBGzyCvwCBwCGWA88bWAXaABZKYBWozhGNgA6sCqDzAkugM8AMf/FIzNwLbN8ApsA2sEcxjEHc4xrAMt4AJY/gtgR9QVMAi6owcYxDtQHRNUgW9gyQewEbMDYBRsBA0CVjE2AGQD/wrgBajEY6gBbaAQY/qmcM/Wvg4sJ+lXwDq7HwR9+wsrNU6R0xUdDwAAAABJRU5ErkJggg==';
+function createTrayIcon(): Electron.NativeImage {
+  const iconPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'tray-icon.png')
+    : path.join(app.getAppPath(), 'src/assets/tray-icon.png');
 
-  const icon = nativeImage.createFromDataURL(`data:image/png;base64,${pngBase64}`);
+  const icon = nativeImage.createFromPath(iconPath);
 
-  // Mark as template image on macOS (adapts to light/dark mode)
+  // Mark as template image on macOS so it adapts to light/dark mode
   if (process.platform === 'darwin') {
     icon.setTemplateImage(true);
   }
