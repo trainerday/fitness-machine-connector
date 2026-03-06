@@ -36,6 +36,9 @@ let pendingBluetoothDevice: BluetoothDevice | null = null;
 /** Tracks if we're waiting for scan results (prevents showing list after selection) */
 let awaitingScanResults = false;
 
+/** Tracks if a requestDevice() call is already in flight - prevents concurrent scans */
+let scanInProgress = false;
+
 /** Tracks if we're in auto-reconnect mode (silent scan, no UI) */
 let autoReconnectMode = false;
 
@@ -91,24 +94,29 @@ function checkBluetoothAvailability(): boolean {
  * Can be clicked anytime to restart scanning.
  */
 async function handleScan(): Promise<void> {
-  // If user manually clicks scan, exit auto-reconnect mode
-  if (!autoReconnectMode) {
-    activityLog.log('Scanning for Bluetooth devices...');
-  }
-
-  // Clear previous results and show scanning state (unless in auto-reconnect mode)
+  // Always refresh the UI and device cache regardless of whether a scan is running
   deviceList.clear();
   if (!autoReconnectMode) {
+    activityLog.log('Scanning for Bluetooth devices...');
     deviceList.setScanning(true);
     statusIndicator.setScanning(true);
   }
   awaitingScanResults = true;
 
-  // Tell main process to start fresh scan
+  // Tell main process to clear its device cache so devices re-appear as new.
+  // On macOS, select-bluetooth-device fires continuously, so clearing the cache
+  // is enough to repopulate the list without needing a new requestDevice() call.
   if (window.electronAPI) {
     window.electronAPI.startBluetoothScan();
   }
 
+  // Only start requestDevice() if one isn't already running.
+  // On macOS the same call stays alive across rescans - we just refresh the cache.
+  if (scanInProgress) {
+    return;
+  }
+
+  scanInProgress = true;
   try {
     pendingBluetoothDevice = await fitnessReader.scanForDevices();
 
@@ -118,7 +126,6 @@ async function handleScan(): Promise<void> {
       activityLog.log(`Connecting to ${pendingBluetoothDevice.name || 'Unknown'}...`);
       await connectToDevice(pendingBluetoothDevice);
     } else if (autoReconnectMode) {
-      // Scan completed without finding the auto-reconnect target
       activityLog.log(`Could not find ${autoReconnectDeviceName} - device may be off or out of range`);
       autoReconnectMode = false;
       autoReconnectDeviceName = null;
@@ -127,9 +134,10 @@ async function handleScan(): Promise<void> {
     activityLog.log(`Scan error: ${(error as Error).message}`);
     deviceList.setScanning(false);
     statusIndicator.setScanning(false);
-    // Reset auto-reconnect state on error
     autoReconnectMode = false;
     autoReconnectDeviceName = null;
+  } finally {
+    scanInProgress = false;
   }
 }
 
@@ -146,6 +154,7 @@ function handleDeviceSelection(deviceId: string, deviceName: string): void {
 
   // Stop listening for scan results
   awaitingScanResults = false;
+  scanInProgress = false;
   deviceList.setScanning(false);
   statusIndicator.setScanning(false);
 

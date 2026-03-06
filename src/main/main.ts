@@ -124,7 +124,6 @@ function createWindow(): void {
   // Handle Bluetooth device selection from Web Bluetooth API
   mainWindow.webContents.on('select-bluetooth-device', (event, devices, callback) => {
     event.preventDefault();
-    console.log(`[Main] select-bluetooth-device fired with ${devices.length} device(s)`);
     deviceManager.handleDeviceDiscovered(devices, callback);
   });
 

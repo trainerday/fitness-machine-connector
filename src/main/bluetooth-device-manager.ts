@@ -7,6 +7,8 @@ export class BluetoothDeviceManager {
   private selectCallback: ((deviceId: string) => void) | null = null;
   private onDeviceFound: ((device: Electron.BluetoothDevice) => void) | null = null;
   private isScanning = false;
+  private lastProcessTime = 0;
+  private static readonly THROTTLE_MS = 300;
 
   // Auto-reconnect state
   private autoReconnectDeviceName: string | null = null;
@@ -27,9 +29,18 @@ export class BluetoothDeviceManager {
     devices: Electron.BluetoothDevice[],
     callback: (deviceId: string) => void
   ): void {
-    // Store the callback for later use when user selects a device
+    // Always update the callback — macOS fires this event continuously and
+    // each event provides a fresh callback that must be used for device selection.
     this.selectCallback = callback;
     this.isScanning = true;
+
+    // Throttle device-list processing — on macOS the event fires dozens of times
+    // per second even when no new devices appear, which hammers the UI.
+    const now = Date.now();
+    if (now - this.lastProcessTime < BluetoothDeviceManager.THROTTLE_MS) {
+      return;
+    }
+    this.lastProcessTime = now;
 
     // Stream new devices as they're discovered
     devices.forEach((device) => {
@@ -124,11 +135,14 @@ export class BluetoothDeviceManager {
   }
 
   /**
-   * Reset for a new scan - clears device list for fresh discovery
+   * Reset for a new scan - clears device cache so all devices appear as new
+   * on the next select-bluetooth-device event. Does NOT cancel the pending
+   * requestDevice() call - the renderer reuses the same one across rescans.
    */
   startNewScan(): void {
     console.log('[BluetoothDeviceManager] New scan requested, clearing previous devices');
     this.clearScanState();
+    this.lastProcessTime = 0; // Allow immediate processing on the fresh scan
   }
 
   /**
