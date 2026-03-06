@@ -70,11 +70,9 @@ function makeReadChar(bleno: any, uuid: string, value: Buffer): any {
 }
 
 function makeNotifyChar(bleno: any, uuid: string): any {
-  const char = new bleno.Characteristic({ uuid, properties: ['notify'] });
-  char._cb = null;
-  char.onSubscribe = (_max: number, cb: (buf: Buffer) => void) => { char._cb = cb; };
-  char.onUnsubscribe = () => { char._cb = null; };
-  return char;
+  // Use bleno's built-in subscriber tracking — onSubscribe(connection, maxValueSize, updateValueCallback)
+  // and the built-in notify(data) method dispatch to all subscribers automatically.
+  return new bleno.Characteristic({ uuid, properties: ['notify'] });
 }
 
 function makeControlPointChar(bleno: any, onLog: (m: string) => void): any {
@@ -82,16 +80,13 @@ function makeControlPointChar(bleno: any, onLog: (m: string) => void): any {
     uuid: '2ad9',
     properties: ['write', 'indicate'],
   });
-  char._cb = null;
-  char.onSubscribe = (_max: number, cb: (buf: Buffer) => void) => { char._cb = cb; };
-  char.onUnsubscribe = () => { char._cb = null; };
   char.onWriteRequest = (data: Buffer, _offset: number, _withoutResponse: boolean, callback: (r: number) => void) => {
     if (data.length === 0) { callback(bleno.Characteristic.RESULT_SUCCESS); return; }
     const opCode = data[0];
     onLog(`[MacBLE] Control point op: 0x${opCode.toString(16)}`);
     // Respond with success for all known op codes
     const response = Buffer.from([0x80, opCode, 0x01]);
-    if (char._cb) char._cb(response);
+    char.notify(response);
     callback(bleno.Characteristic.RESULT_SUCCESS);
   };
   return char;
@@ -220,12 +215,10 @@ export class MacBleBackend extends EventEmitter {
   private sendNotifications(): void {
     const { power, cadence, heartRate } = this.currentData;
 
-    if (this.bikeDataChar?._cb) {
-      this.bikeDataChar._cb(buildIndoorBikeData(power, cadence, heartRate));
-    }
+    this.bikeDataChar?.notify(buildIndoorBikeData(power, cadence, heartRate));
 
-    if (heartRate > 0 && this.hrChar?._cb) {
-      this.hrChar._cb(Buffer.from([0x00, Math.min(255, heartRate)]));
+    if (heartRate > 0) {
+      this.hrChar?.notify(Buffer.from([0x00, Math.min(255, heartRate)]));
     }
   }
 
