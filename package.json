@@ -46,6 +46,7 @@
     "vite": "^5.4.21"
   },
   "dependencies": {
+    "@stoprocent/bleno": "^0.12.1",
     "electron-squirrel-startup": "^1.0.1"
   }
 }
