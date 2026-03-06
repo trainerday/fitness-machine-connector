@@ -13,6 +13,7 @@ import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import { app } from 'electron';
 import { EventEmitter } from 'events';
+import { MacBleBackend } from './mac-ble-backend';
 import { FtmsOutput } from '../shared/types/fitness-data';
 
 export interface BroadcasterStatus {
@@ -65,13 +66,13 @@ class WindowsBroadcaster extends EventEmitter {
     const isDev = !app.isPackaged;
 
     if (isDev) {
-      const projectPath = path.join(app.getAppPath(), 'FTMSBluetoothForwarder', 'FTMSBluetoothForwarder.csproj');
+      const projectPath = path.join(app.getAppPath(), 'FTMSBluetoothForwarderWindows', 'FTMSBluetoothForwarderWindows.csproj');
       return {
         command: 'dotnet',
         args: ['run', '--project', projectPath, '-c', 'Release'],
       };
     } else {
-      const exePath = path.join(process.resourcesPath, 'FTMSBluetoothForwarder.exe');
+      const exePath = path.join(process.resourcesPath, 'FTMSBluetoothForwarderWindows.exe');
       return {
         command: exePath,
         args: [],
@@ -437,16 +438,23 @@ class WindowsBroadcaster extends EventEmitter {
 
 /**
  * Main BluetoothBroadcaster class
- * Provides unified interface for BLE operations via .NET
+ * Selects the right backend per platform:
+ *   Windows → FTMSBluetoothForwarderWindows (C# subprocess)
+ *   macOS   → MacBleBackend (bleno in-process)
  */
 export class BluetoothBroadcaster extends EventEmitter {
-  private backend: WindowsBroadcaster;
+  private backend: WindowsBroadcaster | MacBleBackend;
 
   constructor() {
     super();
 
-    console.log('[BLE] Initializing .NET backend');
-    this.backend = new WindowsBroadcaster();
+    if (process.platform === 'darwin') {
+      console.log('[BLE] macOS detected — using Mac BLE backend (bleno)');
+      this.backend = new MacBleBackend();
+    } else {
+      console.log('[BLE] Windows detected — using .NET backend');
+      this.backend = new WindowsBroadcaster();
+    }
 
     // Forward all events from backend
     this.backend.on('status', (status: BroadcasterStatus) => this.emit('status', status));

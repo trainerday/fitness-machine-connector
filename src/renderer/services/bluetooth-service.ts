@@ -118,7 +118,8 @@ class BluetoothService {
       });
       return device;
     } catch (error) {
-      if ((error as Error).message?.includes('cancelled')) {
+      const msg = (error as Error).message?.toLowerCase() ?? '';
+      if (msg.includes('cancel') || msg.includes('abort') || msg.includes('user gesture')) {
         return null;
       }
       throw error;
