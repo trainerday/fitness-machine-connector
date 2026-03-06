@@ -37,6 +37,7 @@ export class DeviceList {
   private devices: Map<string, BluetoothDeviceInfo> = new Map();
   private isScanning = false;
   private showAllDevices = true; // Default to showing all devices
+  private searchQuery = '';
 
   constructor() {
     const section = document.getElementById('device-list-section');
@@ -67,10 +68,21 @@ export class DeviceList {
     this.filterToggle.textContent = 'Fitness Only';
     this.filterToggle.addEventListener('click', () => this.toggleFilter());
 
+    // Create search input
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.className = 'device-search';
+    searchInput.placeholder = 'Search devices...';
+    searchInput.addEventListener('input', () => {
+      this.searchQuery = searchInput.value.trim().toLowerCase();
+      this.refreshList();
+    });
+
     // Add elements to header
     this.header.appendChild(this.countBadge);
     this.header.appendChild(this.scanningIndicator);
     this.header.appendChild(this.filterToggle);
+    this.header.appendChild(searchInput);
   }
 
   /**
@@ -88,6 +100,11 @@ export class DeviceList {
     return FITNESS_DEVICE_PATTERNS.some(pattern => pattern.test(deviceName));
   }
 
+  private matchesSearch(deviceName: string): boolean {
+    if (!this.searchQuery) return true;
+    return deviceName.toLowerCase().includes(this.searchQuery);
+  }
+
   /**
    * Add a single device to the list (for streaming updates)
    */
@@ -102,7 +119,7 @@ export class DeviceList {
 
     // Check if device should be visible based on filter
     const isFitness = this.isFitnessDevice(device.deviceName);
-    const shouldShow = this.showAllDevices || isFitness;
+    const shouldShow = (this.showAllDevices || isFitness) && this.matchesSearch(device.deviceName);
 
     if (shouldShow) {
       // Remove "no devices" message before adding first visible device
@@ -151,7 +168,7 @@ export class DeviceList {
     this.list.innerHTML = '';
 
     const devicesToShow = Array.from(this.devices.values())
-      .filter(device => this.showAllDevices || this.isFitnessDevice(device.deviceName));
+      .filter(device => (this.showAllDevices || this.isFitnessDevice(device.deviceName)) && this.matchesSearch(device.deviceName));
 
     if (devicesToShow.length === 0 && this.devices.size > 0) {
       this.list.innerHTML = `<div class="no-devices">No fitness devices found. Click "Show All" to see all ${this.devices.size} device(s).</div>`;

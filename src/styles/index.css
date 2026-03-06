@@ -211,6 +211,27 @@ section {
   margin-left: auto;
 }
 
+.device-search {
+  background: #3a3a5c;
+  border: 1px solid rgba(76, 201, 240, 0.2);
+  border-radius: 8px;
+  color: #eee;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 8px 12px;
+  outline: none;
+  width: 160px;
+  transition: border-color 0.2s ease;
+}
+
+.device-search::placeholder {
+  color: rgba(238, 238, 238, 0.4);
+}
+
+.device-search:focus {
+  border-color: rgba(76, 201, 240, 0.6);
+}
+
 .device-list {
   display: flex;
   flex-direction: column;
