@@ -11,8 +11,8 @@
     "make": "npm run ftms:build && electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
-    "ftms:build:win": "dotnet publish FTMSBluetoothForwarder/FTMSBluetoothForwarder.csproj -c Release -r win-x64 -o resources",
-    "ftms:build:mac": "dotnet publish FTMSBluetoothForwarder/FTMSBluetoothForwarder.csproj -c Release -r osx-x64 -o resources",
+    "ftms:build:win": "dotnet publish FTMSBluetoothForwarderWindows/FTMSBluetoothForwarderWindows.csproj -c Release -r win-x64 -o resources",
+    "ftms:build:mac": "dotnet publish FTMSBluetoothForwarderWindows/FTMSBluetoothForwarderWindows.csproj -c Release -r osx-x64 -o resources",
     "ftms:build": "npm run ftms:build:win",
     "test:mock": "electron test-mock/"
   },

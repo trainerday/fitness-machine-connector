@@ -65,13 +65,13 @@ class WindowsBroadcaster extends EventEmitter {
     const isDev = !app.isPackaged;
 
     if (isDev) {
-      const projectPath = path.join(app.getAppPath(), 'FTMSBluetoothForwarder', 'FTMSBluetoothForwarder.csproj');
+      const projectPath = path.join(app.getAppPath(), 'FTMSBluetoothForwarderWindows', 'FTMSBluetoothForwarderWindows.csproj');
       return {
         command: 'dotnet',
         args: ['run', '--project', projectPath, '-c', 'Release'],
       };
     } else {
-      const exePath = path.join(process.resourcesPath, 'FTMSBluetoothForwarder.exe');
+      const exePath = path.join(process.resourcesPath, 'FTMSBluetoothForwarderWindows.exe');
       return {
         command: exePath,
         args: [],

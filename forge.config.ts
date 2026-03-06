@@ -21,7 +21,7 @@ const config: ForgeConfig = {
     extraResource: [
       // C# FTMS broadcaster executable (built with: npm run ftms:build)
       // Will be available at process.resourcesPath at runtime
-      ...(process.platform === 'win32' ? ['./resources/FTMSBluetoothForwarder.exe'] : []),
+      ...(process.platform === 'win32' ? ['./resources/FTMSBluetoothForwarderWindows.exe'] : []),
       './src/assets/tray-icon.png',
     ].filter(Boolean),
     // Vite bundles all JS deps so Forge never copies node_modules into the package.
