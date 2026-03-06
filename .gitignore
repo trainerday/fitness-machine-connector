@@ -122,11 +122,11 @@ pip-delete-this-directory.txt
 .pytest_cache/
 
 # C# / .NET
-FTMSBluetoothForwarder/bin/
-FTMSBluetoothForwarder/obj/
+FTMSBluetoothForwarderWindows/bin/
+FTMSBluetoothForwarderWindows/obj/
 *.user
-resources/FTMSBluetoothForwarder.pdb
-resources/FTMSBluetoothForwarder.exe
+resources/FTMSBluetoothForwarderWindows.pdb
+resources/FTMSBluetoothForwarderWindows.exe
 
 # Apple certificates — never commit these
 *.cer
