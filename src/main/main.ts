@@ -20,9 +20,25 @@ if (started) {
 // while already running in the tray), quit the new instance and focus the existing window.
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
+  // Exit immediately - don't set up anything else
   app.quit();
 }
 
+// Tray instance
+let tray: Tray | null = null;
+
+// Main window reference
+let mainWindow: BrowserWindow | null = null;
+
+// Track if we're actually quitting vs just hiding
+let isQuitting = false;
+
+// Only initialize these if we have the single-instance lock
+// (deferred to prevent second instance from creating resources)
+let deviceManager: BluetoothDeviceManager | null = null;
+let broadcaster: BluetoothBroadcaster | null = null;
+
+// Set up second-instance handler (only matters for the first instance)
 app.on('second-instance', () => {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore();
@@ -37,24 +53,6 @@ app.on('second-instance', () => {
 // Enable experimental Web Bluetooth features including getDevices()
 app.commandLine.appendSwitch('enable-experimental-web-platform-features');
 app.commandLine.appendSwitch('enable-web-bluetooth-new-permissions-backend');
-
-// Tray instance
-let tray: Tray | null = null;
-
-// Main window reference
-let mainWindow: BrowserWindow | null = null;
-
-// Track if we're actually quitting vs just hiding
-let isQuitting = false;
-
-// Create device manager instance
-const deviceManager = new BluetoothDeviceManager();
-
-// Create broadcaster instance
-const broadcaster = new BluetoothBroadcaster();
-
-// Set up IPC handlers
-setupIpcHandlers(deviceManager, broadcaster);
 
 /**
  * Load the tray icon from disk.
@@ -142,11 +140,11 @@ function createWindow(): void {
   // Handle Bluetooth device selection from Web Bluetooth API
   mainWindow.webContents.on('select-bluetooth-device', (event, devices, callback) => {
     event.preventDefault();
-    deviceManager.handleDeviceDiscovered(devices, callback);
+    deviceManager?.handleDeviceDiscovered(devices, callback);
   });
 
   // Stream discovered devices to renderer as they're found
-  deviceManager.setOnDeviceFound((device) => {
+  deviceManager?.setOnDeviceFound((device) => {
     mainWindow?.webContents.send('bluetooth-device-found', device);
   });
 
@@ -162,6 +160,14 @@ function createWindow(): void {
 
 // App lifecycle handlers
 app.on('ready', () => {
+  // Don't initialize if we're the second instance (should never reach here, but defensive check)
+  if (!gotSingleInstanceLock) return;
+
+  // Initialize managers only when we have the lock and app is ready
+  deviceManager = new BluetoothDeviceManager();
+  broadcaster = new BluetoothBroadcaster();
+  setupIpcHandlers(deviceManager, broadcaster);
+
   setupBluetoothPermissions();
   createWindow();
   createTray();
@@ -176,6 +182,9 @@ app.on('ready', () => {
   broadcaster.on('fitnessData', (data) => {
     mainWindow?.webContents.send('fitness-data-from-dotnet', data);
   });
+
+  // Listen for disconnection events from broadcaster
+  broadcaster.on('deviceDisconnected', onDeviceDisconnected);
 
   // Attempt auto-reconnect after window loads
   mainWindow?.webContents.on('did-finish-load', () => {
@@ -298,14 +307,14 @@ function startLookoutMode(): void {
   lookoutDeviceName = savedDevice.name.toLowerCase();
 
   // Make sure broadcaster is running
-  if (!broadcaster.isRunning()) {
+  if (broadcaster && !broadcaster.isRunning()) {
     console.log('[Lookout] Starting .NET backend...');
     broadcaster.start();
   }
 
   // Windows: use .NET backend scan to find and connect to the device
   // Mac: use renderer's getDevices() path (no user gesture required)
-  if (process.platform !== 'darwin') {
+  if (process.platform !== 'darwin' && broadcaster) {
     broadcaster.on('deviceFound', onLookoutDeviceFound);
     broadcaster.on('deviceConnected', onLookoutDeviceConnected);
     broadcaster.setAutoReconnect(true, savedDevice.id, savedDevice.name);
@@ -344,13 +353,13 @@ function doLookoutScan(): void {
 
       // Tell device manager to auto-select this device the moment it appears —
       // this works even if the device is already cached (checked before dedup).
-      deviceManager.setAutoReconnect(savedDevice.name, () => {
+      deviceManager?.setAutoReconnect(savedDevice.name, () => {
         console.log(`[Lookout] Mac: device ${savedDevice.name} was auto-selected`);
       });
 
       // Clear the device cache so the device re-appears as "new" and triggers
       // onDeviceFound → renderer's onBluetoothDeviceFound auto-select logic.
-      deviceManager.startNewScan();
+      deviceManager?.startNewScan();
 
       // Start requestDevice() with userGesture=true
       const payload = JSON.stringify(savedDevice);
@@ -363,7 +372,7 @@ function doLookoutScan(): void {
   }
 
   console.log(`[Lookout] Scanning for ${lookoutDeviceName}...`);
-  broadcaster.scan(LOOKOUT_SCAN_DURATION);
+  broadcaster?.scan(LOOKOUT_SCAN_DURATION);
 }
 
 /**
@@ -377,8 +386,8 @@ function onLookoutDeviceFound(device: { id: string; name: string; isFitnessDevic
   // Check if this is our target device
   if (device.name.toLowerCase() === lookoutDeviceName) {
     console.log(`[Lookout] Target device found! Connecting to ${device.name}...`);
-    broadcaster.stopScan();
-    broadcaster.connect(device.id, device.name);
+    broadcaster?.stopScan();
+    broadcaster?.connect(device.id, device.name);
   }
 }
 
@@ -410,9 +419,9 @@ function stopLookoutMode(): void {
     lookoutInterval = null;
   }
 
-  broadcaster.removeListener('deviceFound', onLookoutDeviceFound);
-  broadcaster.removeListener('deviceConnected', onLookoutDeviceConnected);
-  broadcaster.stopScan();
+  broadcaster?.removeListener('deviceFound', onLookoutDeviceFound);
+  broadcaster?.removeListener('deviceConnected', onLookoutDeviceConnected);
+  broadcaster?.stopScan();
 
   // Notify renderer
   mainWindow?.webContents.send('lookout-status', { active: false });
@@ -442,9 +451,6 @@ function onDeviceDisconnected(): void {
     }
   }, 2000);
 }
-
-// Listen for disconnection events from broadcaster
-broadcaster.on('deviceDisconnected', onDeviceDisconnected);
 
 /**
  * Legacy function name for compatibility - now starts lookout mode
@@ -477,10 +483,13 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   isQuitting = true;
   stopPowerSaveBlocker();
-  broadcaster.stop();
+  broadcaster?.stop();
 });
 
 app.on('activate', () => {
+  // Don't do anything if we're the second instance
+  if (!gotSingleInstanceLock) return;
+
   // On macOS, re-show the window when clicking the dock icon
   if (mainWindow) {
     mainWindow.show();
