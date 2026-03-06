@@ -100,19 +100,22 @@ async function handleScan(): Promise<void> {
     activityLog.log('Scanning for Bluetooth devices...');
     deviceList.setScanning(true);
     statusIndicator.setScanning(true);
+
+    // Tell main process to clear its device cache so devices re-appear as new.
+    // On macOS, select-bluetooth-device fires continuously, so clearing the cache
+    // is enough to repopulate the list without needing a new requestDevice() call.
+    // NOTE: do NOT send this during auto-reconnect — it triggers pauseLookoutForManualScan()
+    // which stops the lookout permanently.
+    if (window.electronAPI) {
+      window.electronAPI.startBluetoothScan();
+    }
   }
   awaitingScanResults = true;
-
-  // Tell main process to clear its device cache so devices re-appear as new.
-  // On macOS, select-bluetooth-device fires continuously, so clearing the cache
-  // is enough to repopulate the list without needing a new requestDevice() call.
-  if (window.electronAPI) {
-    window.electronAPI.startBluetoothScan();
-  }
 
   // Only start requestDevice() if one isn't already running.
   // On macOS the same call stays alive across rescans - we just refresh the cache.
   if (scanInProgress) {
+    console.log('[Scan] Reusing existing requestDevice() call');
     return;
   }
 
@@ -342,14 +345,9 @@ function setupIpcListeners(): void {
       return;
     }
 
-    // Set up auto-reconnect mode - will silently scan and connect when device is found
-    autoReconnectMode = true;
-    autoReconnectDeviceName = device.name;
-    activityLog.log(`Looking for ${device.name}...`);
-
-    // Trigger a scan - the device discovery handler will auto-connect when it finds the device
-    console.log('[Renderer] Starting silent scan for auto-reconnect');
-    handleScan();
+    // On Mac, auto-reconnect is handled via executeJavaScript (userGesture=true) in handleAutoReconnect().
+    // This IPC path is used on Windows (wake from sleep) or as a fallback.
+    await handleAutoReconnect(device);
   });
 
   // Listen for device connection from .NET backend (bypasses Web Bluetooth)
@@ -439,6 +437,29 @@ function stopUpdateInterval(): void {
 // =============================================================================
 
 /**
+ * Auto-reconnect handler called by main process via executeJavaScript with userGesture=true.
+ * This allows requestDevice() to run without a real user gesture on macOS.
+ */
+async function handleAutoReconnect(device: { name: string; id: string }): Promise<void> {
+  if (fitnessReader.isConnected()) return;
+
+  // Try getDevices() first (instant, no scan needed if device was previously paired)
+  const success = await fitnessReader.reconnect(device.name);
+  if (success) {
+    activityLog?.log(`Reconnected to ${device.name}`);
+    return;
+  }
+
+  // Fall back to requestDevice() scan with auto-select
+  autoReconnectMode = true;
+  autoReconnectDeviceName = device.name;
+  handleScan();
+}
+
+// Expose for executeJavaScript calls from main process
+(window as any).__autoReconnect = handleAutoReconnect;
+
+/**
  * Initialize the application.
  * Sets up UI components, callbacks, and event listeners.
  */
@@ -488,41 +509,6 @@ function devLog(message: string, data?: unknown): void {
   }
 }
 
-/**
- * Check for a previously saved device and attempt automatic reconnection.
- * Uses navigator.bluetooth.getDevices() which returns previously permitted devices.
- */
-async function checkForAutoReconnect(): Promise<void> {
-  if (!window.electronAPI) {
-    devLog('No electronAPI available');
-    return;
-  }
-
-  try {
-    devLog('Checking for saved device...');
-    const savedDevice = await window.electronAPI.loadLastDevice();
-
-    if (!savedDevice) {
-      devLog('No saved device found');
-      return;
-    }
-
-    devLog(`Found saved device: ${savedDevice.name}`);
-    devLog('Attempting automatic reconnection...');
-
-    // Try to reconnect using getDevices() - no user gesture required
-    const success = await fitnessReader.reconnect(savedDevice.name);
-
-    if (success) {
-      devLog(`Successfully reconnected to ${savedDevice.name}`);
-    } else {
-      devLog(`Could not auto-reconnect to ${savedDevice.name} - device may be off or out of range`);
-    }
-  } catch (error) {
-    devLog(`Error during auto-reconnect: ${(error as Error).message}`);
-    console.error('[AutoReconnect] Full error:', error);
-  }
-}
 
 // =============================================================================
 // START APPLICATION

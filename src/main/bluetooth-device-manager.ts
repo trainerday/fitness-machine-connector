@@ -8,7 +8,9 @@ export class BluetoothDeviceManager {
   private onDeviceFound: ((device: Electron.BluetoothDevice) => void) | null = null;
   private isScanning = false;
   private lastProcessTime = 0;
+  private lastSnapshotTime = 0;
   private static readonly THROTTLE_MS = 300;
+  private static readonly SNAPSHOT_MS = 2000; // Log full device list every 2s
 
   // Auto-reconnect state
   private autoReconnectDeviceName: string | null = null;
@@ -42,18 +44,30 @@ export class BluetoothDeviceManager {
     }
     this.lastProcessTime = now;
 
+    // Periodically log the full raw device list so we can see what macOS is scanning
+    if (now - this.lastSnapshotTime >= BluetoothDeviceManager.SNAPSHOT_MS) {
+      this.lastSnapshotTime = now;
+      if (devices.length === 0) {
+        console.log('[BT Scan] No devices visible right now');
+      } else {
+        console.log(`[BT Scan] ${devices.length} device(s) visible:`);
+        devices.forEach(d => console.log(`  - "${d.deviceName || '(unnamed)'}" id=${d.deviceId}`));
+      }
+    }
+
     // Stream new devices as they're discovered
     devices.forEach((device) => {
+      // Auto-reconnect check runs BEFORE dedup — the target device may already
+      // be cached from a previous scan cycle, but we still want to select it.
+      if (this.autoReconnectDeviceName && device.deviceName === this.autoReconnectDeviceName) {
+        console.log(`[BluetoothDeviceManager] Auto-reconnect: Found target device "${device.deviceName}"`);
+        this.autoSelectDevice(device.deviceId);
+        return;
+      }
+
       if (!this.devices.has(device.deviceId)) {
         console.log(`[BluetoothDeviceManager] New device: ${device.deviceName || 'Unknown'} (${device.deviceId})`);
         this.devices.set(device.deviceId, device);
-
-        // Check for auto-reconnect match
-        if (this.autoReconnectDeviceName && device.deviceName === this.autoReconnectDeviceName) {
-          console.log(`[BluetoothDeviceManager] Auto-reconnect: Found target device "${device.deviceName}"`);
-          this.autoSelectDevice(device.deviceId);
-          return;
-        }
 
         // Immediately notify renderer of new device
         if (this.onDeviceFound) {
@@ -142,7 +156,8 @@ export class BluetoothDeviceManager {
   startNewScan(): void {
     console.log('[BluetoothDeviceManager] New scan requested, clearing previous devices');
     this.clearScanState();
-    this.lastProcessTime = 0; // Allow immediate processing on the fresh scan
+    this.lastProcessTime = 0;
+    this.lastSnapshotTime = 0; // Show snapshot immediately on fresh scan
   }
 
   /**
