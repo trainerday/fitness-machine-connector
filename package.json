@@ -13,7 +13,7 @@
     "lint": "eslint --ext .ts,.tsx .",
     "ftms:build:win": "dotnet publish FTMSBluetoothForwarderWindows/FTMSBluetoothForwarderWindows.csproj -c Release -r win-x64 -o resources",
     "ftms:build:mac": "dotnet publish FTMSBluetoothForwarderWindows/FTMSBluetoothForwarderWindows.csproj -c Release -r osx-x64 -o resources",
-    "ftms:build": "npm run ftms:build:win",
+    "ftms:build": "node -e \"if(require('os').platform()==='win32')require('child_process').execSync('npm run ftms:build:win',{stdio:'inherit'})\"",
     "test:mock": "electron test-mock/"
   },
   "keywords": [],
