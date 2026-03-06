@@ -102,7 +102,7 @@ function createTray(): void {
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 900,
-    height: 700,
+    height: 900,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
