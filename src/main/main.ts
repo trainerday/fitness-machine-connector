@@ -16,6 +16,24 @@ if (started) {
   app.quit();
 }
 
+// Single-instance lock: if a second instance is launched (e.g. clicking the desktop icon
+// while already running in the tray), quit the new instance and focus the existing window.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
+
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+    if (process.platform === 'darwin') {
+      app.dock?.show();
+    }
+  }
+});
+
 // Enable experimental Web Bluetooth features including getDevices()
 app.commandLine.appendSwitch('enable-experimental-web-platform-features');
 app.commandLine.appendSwitch('enable-web-bluetooth-new-permissions-backend');
