@@ -84,9 +84,30 @@ export class FitnessDataReader {
 
   /**
    * Connect to a fitness device and start receiving data.
+   * After subscribing, fires any init writes defined in the device spec (e.g. Echelon activation).
    */
   async connect(device: BluetoothDevice): Promise<void> {
     await bluetoothService.connect(device);
+    await this.sendInitWrites();
+  }
+
+  /**
+   * Send any init writes required by the connected device's spec.
+   * Attempts all writes from all specs — writes that don't apply to the
+   * current device fail silently (device won't have the service).
+   */
+  private async sendInitWrites(): Promise<void> {
+    const writes = deviceSpecParser.getAllInitWrites();
+    if (writes.length === 0) return;
+
+    for (const w of writes) {
+      try {
+        await bluetoothService.writeCharacteristic(w.serviceUuid, w.characteristicUuid, w.bytes);
+        console.log(`[FitnessDataReader] Init write sent to ${w.characteristicUuid}`);
+      } catch {
+        // Expected for devices that don't have this write characteristic — ignore
+      }
+    }
   }
 
   /**

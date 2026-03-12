@@ -71,6 +71,12 @@ interface ComputedField {
   comment?: string;
 }
 
+interface InitWrite {
+  characteristicUuid: string;
+  bytes: number[];
+  comment?: string;
+}
+
 interface ValidationRule {
   magicBytes?: Array<{ offset: number; value: number }>;
   versionCheck?: { offset: number; value: number };
@@ -90,6 +96,7 @@ interface DeviceSpec {
   fields?: StaticField[];
   dynamicFields?: DynamicField[];
   computed?: ComputedField[];
+  initWrites?: InitWrite[];
 }
 
 // =============================================================================
@@ -179,6 +186,26 @@ export class DeviceSpecParser {
     });
 
     console.log('[DeviceSpecParser] Service UUIDs:', result);
+    return result;
+  }
+
+  /**
+   * Get all init writes across all loaded specs.
+   * FitnessDataReader attempts each after connecting — writes that don't apply
+   * to the connected device fail silently (same pattern as trySubscribe).
+   */
+  getAllInitWrites(): Array<{ serviceUuid: BluetoothUuid; characteristicUuid: string; bytes: number[] }> {
+    const result: Array<{ serviceUuid: BluetoothUuid; characteristicUuid: string; bytes: number[] }> = [];
+    for (const spec of deviceSpecs) {
+      if (!spec.initWrites?.length) continue;
+      for (const w of spec.initWrites) {
+        result.push({
+          serviceUuid: this.parseUuid(spec.serviceUuid),
+          characteristicUuid: w.characteristicUuid,
+          bytes: w.bytes,
+        });
+      }
+    }
     return result;
   }
 

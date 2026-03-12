@@ -235,6 +235,26 @@ class BluetoothService {
   }
 
   /**
+   * Write bytes to a specific characteristic.
+   * Used for devices that require an init/activation command after connecting (e.g. Echelon).
+   */
+  async writeCharacteristic(
+    serviceUuid: BluetoothUuid,
+    characteristicUuid: BluetoothUuid,
+    bytes: number[]
+  ): Promise<void> {
+    if (!this.gattServer) throw new Error('Not connected');
+
+    console.log(`[BluetoothService] Writing to service=${serviceUuid}, char=${characteristicUuid}, bytes=[${bytes.join(', ')}]`);
+
+    const service = await this.gattServer.getPrimaryService(serviceUuid);
+    const characteristic = await service.getCharacteristic(characteristicUuid);
+    await characteristic.writeValue(new Uint8Array(bytes));
+
+    console.log(`[BluetoothService] Write successful to ${characteristicUuid}`);
+  }
+
+  /**
    * Subscribe to all configured characteristics.
    */
   private async subscribeToCharacteristics(): Promise<void> {
