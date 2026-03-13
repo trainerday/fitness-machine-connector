@@ -90,4 +90,9 @@ export function setupIpcHandlers(
   ipcMain.on('clear-last-device', () => {
     clearLastDevice();
   });
+
+  // Forward renderer log messages to the main process terminal
+  ipcMain.on('log-to-main', (_event, message: string) => {
+    console.log('[Renderer]', message);
+  });
 }

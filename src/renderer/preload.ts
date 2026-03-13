@@ -136,6 +136,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     });
   },
 
+  // Forward a log message to the main process terminal
+  logToMain: (message: string) => {
+    ipcRenderer.send('log-to-main', message);
+  },
+
   removeDotnetListeners: () => {
     ipcRenderer.removeAllListeners('device-connected-via-dotnet');
     ipcRenderer.removeAllListeners('fitness-data-from-dotnet');

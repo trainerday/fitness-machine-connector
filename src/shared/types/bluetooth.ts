@@ -78,6 +78,9 @@ export interface ElectronAPI {
   onAutoReconnectFailed: (callback: (info: { deviceName: string; reason: string }) => void) => void;
   onLookoutStatus: (callback: (status: { active: boolean; deviceName?: string }) => void) => void;
   removeDotnetListeners: () => void;
+
+  // Logging
+  logToMain: (message: string) => void;
 }
 
 declare global {

@@ -147,6 +147,8 @@ deviceSpecs.forEach(spec => {
 // =============================================================================
 
 export class DeviceSpecParser {
+  private identifiedSpecs = new Set<string>();
+
   /**
    * Parse raw Bluetooth data using device specs.
    */
@@ -154,18 +156,33 @@ export class DeviceSpecParser {
     const normalizedUuid = normalizeUuid(characteristicUuid);
     const spec = specByCharacteristic.get(normalizedUuid);
 
-    console.log(`[DeviceSpecParser] Received data from characteristic: ${characteristicUuid} (normalized: ${normalizedUuid})`);
-    console.log(`[DeviceSpecParser] Available specs:`, Array.from(specByCharacteristic.keys()));
-
     if (!spec) {
       console.log(`[DeviceSpecParser] No spec found for UUID: ${normalizedUuid}`);
       return {};
     }
 
-    console.log(`[DeviceSpecParser] Matched spec: ${spec.id}, data length: ${rawValue.byteLength}`);
+    // Log device identification once per spec per connection session
+    if (!this.identifiedSpecs.has(spec.id)) {
+      this.identifiedSpecs.add(spec.id);
+      console.log(
+        `%c[Device Identified] ${spec.name} (${spec.id})`,
+        'color: #4CAF50; font-weight: bold; font-size: 14px'
+      );
+      console.log(`  Characteristic: ${characteristicUuid}`);
+      console.log(`  Data length:    ${rawValue.byteLength} bytes`);
+      console.log(`  Init writes:    ${spec.initWrites?.length ? `yes (${spec.initWrites.length})` : 'none'}`);
+    }
+
     const result = this.parseWithSpec(spec, rawValue);
-    console.log(`[DeviceSpecParser] Parsed result:`, result);
     return result;
+  }
+
+  /**
+   * Reset identified device tracking — call this on disconnect so the log
+   * fires again on the next connection.
+   */
+  resetIdentification(): void {
+    this.identifiedSpecs.clear();
   }
 
   /**
@@ -187,6 +204,21 @@ export class DeviceSpecParser {
 
     console.log('[DeviceSpecParser] Service UUIDs:', result);
     return result;
+  }
+
+  /**
+   * Identify which device spec matches a given service UUID.
+   * Returns the spec name/id or null if unrecognized.
+   */
+  identifyByServiceUuid(serviceUuid: BluetoothUuid): { id: string; name: string; hasInitWrites: boolean } | null {
+    const normalized = normalizeUuid(serviceUuid);
+    const spec = deviceSpecs.find(s => normalizeUuid(s.serviceUuid) === normalized);
+    if (!spec) return null;
+    return {
+      id: spec.id,
+      name: spec.name,
+      hasInitWrites: !!(spec.initWrites?.length),
+    };
   }
 
   /**

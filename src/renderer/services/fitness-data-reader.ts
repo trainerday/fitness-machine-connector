@@ -36,6 +36,9 @@ type FitnessDataCallback = (data: FitnessData) => void;
 /** Callback for connection status changes */
 type ConnectionChangeCallback = (connected: boolean, deviceName?: string) => void;
 
+/** Callback for diagnostic status messages */
+type StatusLogCallback = (message: string) => void;
+
 /**
  * High-level reader that coordinates Bluetooth and parsing.
  * This is the main interface for the UI to interact with fitness devices.
@@ -43,6 +46,7 @@ type ConnectionChangeCallback = (connected: boolean, deviceName?: string) => voi
 export class FitnessDataReader {
   private fitnessDataCallback: FitnessDataCallback | null = null;
   private connectionChangeCallback: ConnectionChangeCallback | null = null;
+  private statusLogCallback: StatusLogCallback | null = null;
 
   constructor() {
     this.configureBluetoothService();
@@ -70,6 +74,10 @@ export class FitnessDataReader {
    */
   onConnectionChange(callback: ConnectionChangeCallback): void {
     this.connectionChangeCallback = callback;
+  }
+
+  onStatusLog(callback: StatusLogCallback): void {
+    this.statusLogCallback = callback;
   }
 
   /**
@@ -103,9 +111,9 @@ export class FitnessDataReader {
     for (const w of writes) {
       try {
         await bluetoothService.writeCharacteristic(w.serviceUuid, w.characteristicUuid, w.bytes);
-        console.log(`[FitnessDataReader] Init write sent to ${w.characteristicUuid}`);
-      } catch {
-        // Expected for devices that don't have this write characteristic — ignore
+        this.statusLogCallback?.(`Init write OK → ${w.characteristicUuid}`);
+      } catch (err) {
+        this.statusLogCallback?.(`Init write failed → ${w.characteristicUuid}: ${(err as Error).message}`);
       }
     }
   }
@@ -146,9 +154,9 @@ export class FitnessDataReader {
    * Uses device specs to determine which characteristics to subscribe to.
    */
   private configureBluetoothService(): void {
-    // Get characteristic configs from device specs
     const subscriptions = deviceSpecParser.getCharacteristicConfigs();
     bluetoothService.setSubscriptions(subscriptions);
+    bluetoothService.onSubscriptionStatus((msg) => this.statusLogCallback?.(msg));
   }
 
   /**
@@ -164,8 +172,9 @@ export class FitnessDataReader {
       this.emitFitnessData(fitnessData);
     });
 
-    // When connection status changes, forward to UI
+    // When connection status changes, forward to UI and reset identification on disconnect
     bluetoothService.onConnectionChange((connected, deviceInfo) => {
+      if (!connected) deviceSpecParser.resetIdentification();
       this.emitConnectionChange(connected, deviceInfo);
     });
   }
