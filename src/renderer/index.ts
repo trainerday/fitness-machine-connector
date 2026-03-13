@@ -24,6 +24,7 @@
 import '../styles/index.css';
 import { ActivityLog, DataDisplay, StatusIndicator, DeviceList } from './ui';
 import { FitnessDataReader } from './services';
+import { deviceSpecParser } from './services/device-spec-parser';
 import { BluetoothDeviceInfo, FitnessData, FtmsOutput } from '../shared/types';
 
 // =============================================================================
@@ -47,6 +48,9 @@ let autoReconnectDeviceName: string | null = null;
 
 /** Latest fitness data, updated on every BLE event but only consumed once per second */
 let latestFitnessData: FitnessData | null = null;
+
+/** Tracks whether we've already logged device identification for this connection */
+let deviceIdentified = false;
 
 /** Interval handle for the 1-second update loop (display + broadcast) */
 let updateInterval: ReturnType<typeof setInterval> | null = null;
@@ -242,6 +246,12 @@ function setupFitnessReaderCallbacks(): void {
   // so we merge to keep all fields up to date.
   // The 1-second interval handles both display and broadcasting.
   fitnessReader.onFitnessData((data) => {
+    if (!deviceIdentified && data.sourceType) {
+      deviceIdentified = true;
+      const msg = `Device identified: ${data.sourceType}`;
+      activityLog.log(msg);
+      window.electronAPI?.logToMain(msg);
+    }
     latestFitnessData = { ...latestFitnessData, ...data };
   });
 
@@ -250,6 +260,8 @@ function setupFitnessReaderCallbacks(): void {
     if (connected && deviceName) {
       statusIndicator.setConnected(deviceName);
       startUpdateInterval();
+      activityLog.log(`Connected to "${deviceName}" — waiting for data...`);
+      window.electronAPI?.logToMain(`Connected to "${deviceName}" — waiting for data...`);
 
       // Save connected device for auto-reconnection
       const deviceInfo = fitnessReader.getConnectedDevice();
@@ -267,6 +279,7 @@ function setupFitnessReaderCallbacks(): void {
         window.electronAPI.broadcasterStart();
       }
     } else {
+      deviceIdentified = false;
       stopUpdateInterval();
       statusIndicator.setDisconnected();
       dataDisplay.reset();
@@ -363,11 +376,22 @@ function setupIpcListeners(): void {
     // Auto-reconnect was successful, clear the mode
     autoReconnectMode = false;
     autoReconnectDeviceName = null;
+
+    // Send init writes for this device via .NET backend
+    const writes = deviceSpecParser.getAllInitWrites();
+    for (const w of writes) {
+      window.electronAPI?.writeCharacteristicViaDotnet(String(w.serviceUuid), w.characteristicUuid, w.bytes);
+    }
   });
 
-  // Listen for fitness data from .NET backend
+  // Listen for fitness data from .NET backend (legacy path — kept for backward compat)
   window.electronAPI.onFitnessDataFromDotnet((data) => {
-    // Update latest fitness data (will be consumed by update interval)
+    if (!deviceIdentified && data.source) {
+      deviceIdentified = true;
+      const msg = `Device identified: ${data.source} (via .NET)`;
+      activityLog.log(msg);
+      window.electronAPI?.logToMain(msg);
+    }
     latestFitnessData = {
       power: data.power ?? 0,
       cadence: data.cadence ?? 0,
@@ -376,6 +400,22 @@ function setupIpcListeners(): void {
       distance: 0,
       resistance: 0,
     };
+  });
+
+  // Listen for raw characteristic bytes from .NET backend — parse via DeviceSpecParser
+  window.electronAPI.onRawDataFromDotnet((data) => {
+    const buffer = new Uint8Array(data.bytes).buffer;
+    const dataView = new DataView(buffer);
+    const fitnessData = deviceSpecParser.parse(data.characteristicUuid, dataView);
+    if (Object.keys(fitnessData).length > 0) {
+      if (!deviceIdentified && fitnessData.sourceType) {
+        deviceIdentified = true;
+        const msg = `Device identified: ${fitnessData.sourceType} (via .NET)`;
+        activityLog.log(msg);
+        window.electronAPI?.logToMain(msg);
+      }
+      latestFitnessData = { ...latestFitnessData, ...fitnessData };
+    }
   });
 
   // Listen for auto-reconnect failure
@@ -484,6 +524,10 @@ async function init(): Promise<void> {
 
   // Set up fitness reader callbacks
   setupFitnessReaderCallbacks();
+  fitnessReader.onStatusLog((msg) => {
+    activityLog.log(msg);
+    window.electronAPI?.logToMain(msg);
+  });
 
   // Set up IPC listeners for Electron
   setupIpcListeners();
