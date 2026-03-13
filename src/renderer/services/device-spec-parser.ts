@@ -82,6 +82,13 @@ interface ValidationRule {
   versionCheck?: { offset: number; value: number };
 }
 
+interface PacketSpec {
+  comment?: string;
+  validation?: ValidationRule;
+  minLength?: number;
+  fields: StaticField[];
+}
+
 interface DeviceSpec {
   id: string;
   name: string;
@@ -92,6 +99,7 @@ interface DeviceSpec {
   validation?: ValidationRule;
   mode?: 'static' | 'dynamic';
   flagOffset?: number;
+  packets?: PacketSpec[];
   flagSize?: number;
   fields?: StaticField[];
   dynamicFields?: DynamicField[];
@@ -148,6 +156,8 @@ deviceSpecs.forEach(spec => {
 
 export class DeviceSpecParser {
   private identifiedSpecs = new Set<string>();
+  /** Accumulated field values per spec — lets computed fields use data from multiple packet types */
+  private accumulatedState = new Map<string, Record<string, number>>();
 
   /**
    * Parse raw Bluetooth data using device specs.
@@ -183,6 +193,7 @@ export class DeviceSpecParser {
    */
   resetIdentification(): void {
     this.identifiedSpecs.clear();
+    this.accumulatedState.clear();
   }
 
   /**
@@ -259,34 +270,40 @@ export class DeviceSpecParser {
   }
 
   private parseWithSpec(spec: DeviceSpec, value: DataView): FitnessData {
-    // Check minimum length
-    if (spec.minLength && value.byteLength < spec.minLength) {
-      return {};
-    }
+    let newFields: Record<string, number> = {};
 
-    // Run validation
-    if (spec.validation && !this.validate(spec.validation, value)) {
-      return {};
-    }
-
-    // Parse fields based on mode
-    let data: FitnessData;
-    if (spec.mode === 'dynamic' && spec.dynamicFields) {
-      data = this.parseDynamicFields(spec, value);
-    } else if (spec.fields) {
-      data = this.parseStaticFields(spec.fields, value);
+    if (spec.packets) {
+      // Multi-packet spec: find the first packet whose validation passes and parse its fields
+      for (const packet of spec.packets) {
+        if (packet.minLength && value.byteLength < packet.minLength) continue;
+        if (packet.validation && !this.validate(packet.validation, value)) continue;
+        newFields = this.parseStaticFields(packet.fields, value) as Record<string, number>;
+        break;
+      }
     } else {
-      data = {};
+      // Single-packet spec (existing behaviour)
+      if (spec.minLength && value.byteLength < spec.minLength) return {};
+      if (spec.validation && !this.validate(spec.validation, value)) return {};
+
+      if (spec.mode === 'dynamic' && spec.dynamicFields) {
+        newFields = this.parseDynamicFields(spec, value) as Record<string, number>;
+      } else if (spec.fields) {
+        newFields = this.parseStaticFields(spec.fields, value) as Record<string, number>;
+      }
     }
 
-    // Apply computed fields
+    // Merge new fields into accumulated state for this spec
+    const prev = this.accumulatedState.get(spec.id) ?? {};
+    const accumulated = { ...prev, ...newFields };
+    this.accumulatedState.set(spec.id, accumulated);
+
+    // Apply computed fields using the full accumulated state (spans multiple packet types)
+    const data: FitnessData = { ...accumulated };
     if (spec.computed) {
       this.applyComputedFields(spec.computed, data);
     }
 
-    // Set source type
     data.sourceType = spec.id as FitnessData['sourceType'];
-
     return data;
   }
 
