@@ -75,6 +75,8 @@ export interface ElectronAPI {
   // .NET backend events
   onDeviceConnectedViaDotnet: (callback: (device: { id: string; name: string }) => void) => void;
   onFitnessDataFromDotnet: (callback: (data: { power?: number; cadence?: number; heartRate?: number; source?: string }) => void) => void;
+  onRawDataFromDotnet: (callback: (data: { characteristicUuid: string; bytes: number[] }) => void) => void;
+  writeCharacteristicViaDotnet: (serviceUuid: string, characteristicUuid: string, bytes: number[]) => void;
   onAutoReconnectFailed: (callback: (info: { deviceName: string; reason: string }) => void) => void;
   onLookoutStatus: (callback: (status: { active: boolean; deviceName?: string }) => void) => void;
   removeDotnetListeners: () => void;

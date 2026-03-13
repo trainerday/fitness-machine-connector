@@ -123,6 +123,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     });
   },
 
+  onRawDataFromDotnet: (callback: (data: { characteristicUuid: string; bytes: number[] }) => void) => {
+    ipcRenderer.on('raw-data-from-dotnet', (_event, data) => {
+      callback(data);
+    });
+  },
+
+  writeCharacteristicViaDotnet: (serviceUuid: string, charUuid: string, bytes: number[]) => {
+    ipcRenderer.send('broadcaster-write-characteristic', { serviceUuid, characteristicUuid: charUuid, bytes });
+  },
+
   onAutoReconnectFailed: (callback: (info: { deviceName: string; reason: string }) => void) => {
     ipcRenderer.on('auto-reconnect-failed', (_event, info) => {
       callback(info);
@@ -144,6 +154,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   removeDotnetListeners: () => {
     ipcRenderer.removeAllListeners('device-connected-via-dotnet');
     ipcRenderer.removeAllListeners('fitness-data-from-dotnet');
+    ipcRenderer.removeAllListeners('raw-data-from-dotnet');
     ipcRenderer.removeAllListeners('auto-reconnect-failed');
     ipcRenderer.removeAllListeners('lookout-status');
   },

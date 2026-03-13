@@ -24,6 +24,7 @@
 import '../styles/index.css';
 import { ActivityLog, DataDisplay, StatusIndicator, DeviceList } from './ui';
 import { FitnessDataReader } from './services';
+import { deviceSpecParser } from './services/device-spec-parser';
 import { BluetoothDeviceInfo, FitnessData, FtmsOutput } from '../shared/types';
 
 // =============================================================================
@@ -375,9 +376,15 @@ function setupIpcListeners(): void {
     // Auto-reconnect was successful, clear the mode
     autoReconnectMode = false;
     autoReconnectDeviceName = null;
+
+    // Send init writes for this device via .NET backend
+    const writes = deviceSpecParser.getAllInitWrites();
+    for (const w of writes) {
+      window.electronAPI?.writeCharacteristicViaDotnet(String(w.serviceUuid), w.characteristicUuid, w.bytes);
+    }
   });
 
-  // Listen for fitness data from .NET backend
+  // Listen for fitness data from .NET backend (legacy path — kept for backward compat)
   window.electronAPI.onFitnessDataFromDotnet((data) => {
     if (!deviceIdentified && data.source) {
       deviceIdentified = true;
@@ -393,6 +400,22 @@ function setupIpcListeners(): void {
       distance: 0,
       resistance: 0,
     };
+  });
+
+  // Listen for raw characteristic bytes from .NET backend — parse via DeviceSpecParser
+  window.electronAPI.onRawDataFromDotnet((data) => {
+    const buffer = new Uint8Array(data.bytes).buffer;
+    const dataView = new DataView(buffer);
+    const fitnessData = deviceSpecParser.parse(data.characteristicUuid, dataView);
+    if (Object.keys(fitnessData).length > 0) {
+      if (!deviceIdentified && fitnessData.sourceType) {
+        deviceIdentified = true;
+        const msg = `Device identified: ${fitnessData.sourceType} (via .NET)`;
+        activityLog.log(msg);
+        window.electronAPI?.logToMain(msg);
+      }
+      latestFitnessData = { ...latestFitnessData, ...fitnessData };
+    }
   });
 
   // Listen for auto-reconnect failure

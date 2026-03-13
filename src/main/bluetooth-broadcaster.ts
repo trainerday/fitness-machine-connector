@@ -199,6 +199,14 @@ class WindowsBroadcaster extends EventEmitter {
               this.emit('status', this.status);
               break;
 
+            case 'rawData':
+              // Forward raw characteristic bytes to Electron renderer for parsing
+              this.emit('rawData', {
+                characteristicUuid: message.characteristicUuid as string,
+                bytes: message.bytes as number[],
+              });
+              break;
+
             case 'error':
               console.error(`[BLE] Error: ${message.message}`);
               this.emit('error', message.message);
@@ -393,6 +401,13 @@ class WindowsBroadcaster extends EventEmitter {
     }
   }
 
+  /**
+   * Write bytes to a specific characteristic via the .NET backend
+   */
+  writeCharacteristic(serviceUuid: string, charUuid: string, bytes: number[]): void {
+    this.sendCommand({ type: 'writeCharacteristic', serviceUuid, characteristicUuid: charUuid, bytes });
+  }
+
   stop(): void {
     if (!this.process) {
       return;
@@ -466,6 +481,7 @@ export class BluetoothBroadcaster extends EventEmitter {
     this.backend.on('deviceDisconnected', (reason: string) => this.emit('deviceDisconnected', reason));
     this.backend.on('fitnessData', (data: FitnessData) => this.emit('fitnessData', data));
     this.backend.on('error', (message: string) => this.emit('error', message));
+    this.backend.on('rawData', (data: { characteristicUuid: string; bytes: number[] }) => this.emit('rawData', data));
   }
 
   /** Start the .NET backend */
@@ -536,5 +552,10 @@ export class BluetoothBroadcaster extends EventEmitter {
   /** Check if currently scanning */
   isScanning(): boolean {
     return this.backend.isScanningDevices();
+  }
+
+  /** Write bytes to a specific characteristic (Windows: via .NET backend; macOS: no-op, handled by Web Bluetooth) */
+  writeCharacteristic(serviceUuid: string, charUuid: string, bytes: number[]): void {
+    this.backend.writeCharacteristic(serviceUuid, charUuid, bytes);
   }
 }
