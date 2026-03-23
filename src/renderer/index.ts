@@ -96,10 +96,18 @@ function checkBluetoothAvailability(): boolean {
  * Handle scan button click.
  * Initiates device scanning and connection flow.
  * Can be clicked anytime to restart scanning.
+ * @param manual - true when triggered by the user (resets auto-reconnect state)
  */
-async function handleScan(): Promise<void> {
+async function handleScan(manual = false): Promise<void> {
   // Always refresh the UI and device cache regardless of whether a scan is running
   deviceList.clear();
+
+  if (manual) {
+    // User clicked scan — cancel any pending auto-reconnect so the list isn't suppressed
+    autoReconnectMode = false;
+    autoReconnectDeviceName = null;
+  }
+
   if (!autoReconnectMode) {
     activityLog.log('Scanning for Bluetooth devices...');
     deviceList.setScanning(true);
@@ -156,16 +164,28 @@ async function handleScan(): Promise<void> {
  * Handle device selection from the displayed list.
  * Called when user clicks a device in the list.
  */
-function handleDeviceSelection(deviceId: string, deviceName: string): void {
+function handleDeviceSelection(deviceId: string, deviceName: string, protocol?: string): void {
   activityLog.log(`Selecting ${deviceName || 'Unknown'}...`);
 
-  // Stop listening for scan results
+  const isUsb = protocol === 'ant-plus' || protocol === 'direct-usb';
+
+  if (isUsb) {
+    // USB / ANT+ path: main process owns the connection, no BLE scan to resolve
+    if (window.electronAPI) {
+      window.electronAPI.connectUsbDevice(deviceId);
+    }
+    deviceList.hide();
+    statusIndicator.setConnected(deviceName);
+    startUpdateInterval();
+    return;
+  }
+
+  // BLE path (existing behaviour)
   awaitingScanResults = false;
   scanInProgress = false;
   deviceList.setScanning(false);
   statusIndicator.setScanning(false);
 
-  // Tell main process which device was selected
   if (window.electronAPI) {
     window.electronAPI.selectBluetoothDevice(deviceId);
   }
@@ -437,6 +457,17 @@ function setupIpcListeners(): void {
       statusIndicator.clearLookout();
     }
   });
+
+  // USB / ANT+ device events — appear in the same list as BLE devices
+  window.electronAPI.onUsbDeviceFound((device) => {
+    console.log(`[USB] Device found: ${device.deviceName} (${device.deviceId})`);
+    deviceList.addDevice(device);
+  });
+
+  window.electronAPI.onUsbDeviceLost((deviceId) => {
+    console.log(`[USB] Device lost: ${deviceId}`);
+    deviceList.removeDevice(deviceId);
+  });
 }
 
 // =============================================================================
@@ -518,7 +549,7 @@ async function init(): Promise<void> {
   }
 
   // Set up UI event handlers
-  statusIndicator.onScanClick(handleScan);
+  statusIndicator.onScanClick(() => handleScan(true));
   statusIndicator.onDisconnectClick(handleDisconnect);
   deviceList.onSelect(handleDeviceSelection);
 

@@ -33,10 +33,12 @@ export class DeviceList {
   private countBadge: HTMLSpanElement;
   private scanningIndicator: HTMLSpanElement;
   private filterToggle: HTMLButtonElement;
-  private onDeviceSelect: ((deviceId: string, deviceName: string) => void) | null = null;
+  private usbToggle: HTMLButtonElement;
+  private onDeviceSelect: ((deviceId: string, deviceName: string, protocol?: string) => void) | null = null;
   private devices: Map<string, BluetoothDeviceInfo> = new Map();
   private isScanning = false;
-  private showAllDevices = true; // Default to showing all devices
+  private showFitnessOnly = false;
+  private showUsbOnly = false;
   private searchQuery = '';
 
   constructor() {
@@ -66,7 +68,13 @@ export class DeviceList {
     this.filterToggle = document.createElement('button');
     this.filterToggle.className = 'btn btn-small btn-secondary filter-toggle';
     this.filterToggle.textContent = 'Fitness Only';
-    this.filterToggle.addEventListener('click', () => this.toggleFilter());
+    this.filterToggle.addEventListener('click', () => this.toggleFitnessFilter());
+
+    // Create USB toggle button
+    this.usbToggle = document.createElement('button');
+    this.usbToggle.className = 'btn btn-small btn-secondary filter-toggle';
+    this.usbToggle.textContent = 'USB';
+    this.usbToggle.addEventListener('click', () => this.toggleUsbFilter());
 
     // Create search input
     const searchInput = document.createElement('input');
@@ -82,13 +90,15 @@ export class DeviceList {
     this.header.appendChild(this.countBadge);
     this.header.appendChild(this.scanningIndicator);
     this.header.appendChild(this.filterToggle);
+    this.header.appendChild(this.usbToggle);
     this.header.appendChild(searchInput);
   }
 
   /**
-   * Set callback for when user selects a device
+   * Set callback for when user selects a device.
+   * Protocol is passed through so the caller can route BLE vs USB correctly.
    */
-  onSelect(handler: (deviceId: string, deviceName: string) => void): void {
+  onSelect(handler: (deviceId: string, deviceName: string, protocol?: string) => void): void {
     this.onDeviceSelect = handler;
   }
 
@@ -117,9 +127,9 @@ export class DeviceList {
     this.devices.set(device.deviceId, device);
     this.updateCountBadge();
 
-    // Check if device should be visible based on filter
+    // Check if device should be visible based on current filters
     const isFitness = this.isFitnessDevice(device.deviceName);
-    const shouldShow = (this.showAllDevices || isFitness) && this.matchesSearch(device.deviceName);
+    const shouldShow = (!this.showFitnessOnly || isFitness) && this.matchesSearch(device.deviceName) && this.matchesProtocol(device);
 
     if (shouldShow) {
       // Remove "no devices" message before adding first visible device
@@ -137,28 +147,55 @@ export class DeviceList {
   }
 
   /**
-   * Update the device count badge
+   * Update the device count badge to show visible/total counts
    */
   private updateCountBadge(): void {
-    const visibleCount = this.showAllDevices
-      ? this.devices.size
-      : Array.from(this.devices.values()).filter(d => this.isFitnessDevice(d.deviceName)).length;
-    const totalCount = this.devices.size;
+    const total = this.devices.size;
+    const visible = Array.from(this.devices.values()).filter(d =>
+      (!this.showFitnessOnly || this.isFitnessDevice(d.deviceName)) &&
+      this.matchesSearch(d.deviceName) &&
+      this.matchesProtocol(d)
+    ).length;
 
-    if (this.showAllDevices) {
-      this.countBadge.textContent = `${totalCount}`;
-    } else {
-      this.countBadge.textContent = `${visibleCount}/${totalCount}`;
-    }
+    this.countBadge.textContent = visible === total ? `${total}` : `${visible}/${total}`;
   }
 
   /**
-   * Toggle between showing all devices and fitness devices only
+   * Toggle fitness-only filter
    */
-  private toggleFilter(): void {
-    this.showAllDevices = !this.showAllDevices;
-    this.filterToggle.textContent = this.showAllDevices ? 'Fitness Only' : 'Show All';
+  private toggleFitnessFilter(): void {
+    this.showFitnessOnly = !this.showFitnessOnly;
+    this.filterToggle.classList.toggle('active', this.showFitnessOnly);
     this.refreshList();
+  }
+
+  /**
+   * Toggle USB-only filter (hides all BLE devices)
+   */
+  private toggleUsbFilter(): void {
+    this.showUsbOnly = !this.showUsbOnly;
+    this.usbToggle.classList.toggle('active', this.showUsbOnly);
+    this.refreshList();
+  }
+
+  /**
+   * Remove a single device from the list (e.g. USB stick unplugged).
+   */
+  removeDevice(deviceId: string): void {
+    this.devices.delete(deviceId);
+    this.updateCountBadge();
+
+    const item = this.list.querySelector(`[data-device-id="${deviceId}"]`);
+    if (item) item.remove();
+
+    if (this.list.children.length === 0) {
+      this.list.innerHTML = '<div class="no-devices">Searching for devices...</div>';
+    }
+  }
+
+  private matchesProtocol(device: BluetoothDeviceInfo): boolean {
+    if (!this.showUsbOnly) return true;
+    return device.protocol === 'ant-plus' || device.protocol === 'direct-usb';
   }
 
   /**
@@ -168,10 +205,14 @@ export class DeviceList {
     this.list.innerHTML = '';
 
     const devicesToShow = Array.from(this.devices.values())
-      .filter(device => (this.showAllDevices || this.isFitnessDevice(device.deviceName)) && this.matchesSearch(device.deviceName));
+      .filter(device =>
+        (!this.showFitnessOnly || this.isFitnessDevice(device.deviceName)) &&
+        this.matchesSearch(device.deviceName) &&
+        this.matchesProtocol(device)
+      );
 
     if (devicesToShow.length === 0 && this.devices.size > 0) {
-      this.list.innerHTML = `<div class="no-devices">No fitness devices found. Click "Show All" to see all ${this.devices.size} device(s).</div>`;
+      this.list.innerHTML = `<div class="no-devices">No devices match the current filters (${this.devices.size} found).</div>`;
     } else if (devicesToShow.length === 0) {
       this.list.innerHTML = '<div class="no-devices">Searching for devices...</div>';
     } else {
@@ -230,6 +271,18 @@ export class DeviceList {
       nameRow.appendChild(badge);
     }
 
+    if (device.protocol === 'ant-plus' || device.protocol === 'direct-usb') {
+      const protoBadge = document.createElement('span');
+      protoBadge.className = 'protocol-badge protocol-badge--usb';
+      protoBadge.textContent = device.protocol === 'ant-plus' ? 'ANT+' : 'USB';
+      nameRow.appendChild(protoBadge);
+    } else {
+      const protoBadge = document.createElement('span');
+      protoBadge.className = 'protocol-badge protocol-badge--ble';
+      protoBadge.textContent = 'BLE';
+      nameRow.appendChild(protoBadge);
+    }
+
     const id = document.createElement('div');
     id.className = 'device-id';
     id.textContent = device.deviceId;
@@ -242,7 +295,7 @@ export class DeviceList {
     connectBtn.textContent = 'Connect';
     connectBtn.addEventListener('click', () => {
       if (this.onDeviceSelect) {
-        this.onDeviceSelect(device.deviceId, device.deviceName);
+        this.onDeviceSelect(device.deviceId, device.deviceName, device.protocol);
       }
     });
 

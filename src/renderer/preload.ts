@@ -158,4 +158,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('auto-reconnect-failed');
     ipcRenderer.removeAllListeners('lookout-status');
   },
+
+  // USB / ANT+ device controls
+  connectUsbDevice: (deviceId: string) => {
+    ipcRenderer.send('usb-connect-device', deviceId);
+  },
+
+  disconnectUsbDevice: () => {
+    ipcRenderer.send('usb-disconnect-device');
+  },
+
+  onUsbDeviceFound: (callback: (device: { deviceId: string; deviceName: string; protocol: string }) => void) => {
+    ipcRenderer.on('usb-device-found', (_event, device) => {
+      callback(device);
+    });
+  },
+
+  onUsbDeviceLost: (callback: (deviceId: string) => void) => {
+    ipcRenderer.on('usb-device-lost', (_event, deviceId) => {
+      callback(deviceId);
+    });
+  },
+
+  removeUsbListeners: () => {
+    ipcRenderer.removeAllListeners('usb-device-found');
+    ipcRenderer.removeAllListeners('usb-device-lost');
+  },
 });

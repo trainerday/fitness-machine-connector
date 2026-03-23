@@ -53,6 +53,20 @@
 
   "computed": [
     {
+      "name": "_resFactor",
+      "operation": "exponential",
+      "operands": ["resistance"],
+      "base": 1.090112,
+      "comment": "1.090112^resistance — exponential resistance component"
+    },
+    {
+      "name": "_cadFactor",
+      "operation": "exponential",
+      "operands": ["cadence"],
+      "base": 1.015343,
+      "comment": "1.015343^cadence — exponential cadence component"
+    },
+    {
       "name": "power",
       "operation": "multiply",
       "operands": ["cadence", "resistance"],

@@ -7,6 +7,8 @@ import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { BluetoothDeviceManager } from './bluetooth-device-manager';
 import { BluetoothBroadcaster } from './bluetooth-broadcaster';
+import { UsbDeviceManager, UsbFitnessDevice } from './usb-device-manager';
+import { AntAdapter, AntSensorDevice } from './ant-adapter';
 import { setupIpcHandlers } from './ipc-handlers';
 import { stopPowerSaveBlocker } from './power-manager';
 import { loadLastDevice, loadPersistedBluetoothDevices, saveBluetoothDevicePermission } from './device-persistence';
@@ -37,6 +39,10 @@ let isQuitting = false;
 // (deferred to prevent second instance from creating resources)
 let deviceManager: BluetoothDeviceManager | null = null;
 let broadcaster: BluetoothBroadcaster | null = null;
+let usbDeviceManager: UsbDeviceManager | null = null;
+
+// One AntAdapter per physical ANT+ stick (keyed by stick deviceId from UsbDeviceManager)
+const antAdapters = new Map<string, AntAdapter>();
 
 // Set up second-instance handler (only matters for the first instance)
 app.on('second-instance', () => {
@@ -166,7 +172,9 @@ app.on('ready', () => {
   // Initialize managers only when we have the lock and app is ready
   deviceManager = new BluetoothDeviceManager();
   broadcaster = new BluetoothBroadcaster();
+  usbDeviceManager = new UsbDeviceManager();
   setupIpcHandlers(deviceManager, broadcaster);
+  setupUsbDeviceManager();
 
   setupBluetoothPermissions();
   createWindow();
@@ -459,6 +467,84 @@ function attemptAutoReconnect(): void {
   startLookoutMode();
 }
 
+// =============================================================================
+// USB / ANT+ DEVICE MANAGEMENT
+// =============================================================================
+
+/**
+ * Wire up UsbDeviceManager events and ANT+ IPC handlers.
+ * Called once on app ready, after usbDeviceManager and broadcaster are created.
+ */
+function setupUsbDeviceManager(): void {
+  if (!usbDeviceManager) return;
+
+  // When a fitness USB device is plugged in (or found at startup)
+  usbDeviceManager.on('deviceFound', (usbDevice: UsbFitnessDevice) => {
+    console.log(`[USB] Device found: ${usbDevice.deviceName} (${usbDevice.deviceId})`);
+
+    if (usbDevice.protocol === 'ant-plus') {
+      const adapter = new AntAdapter(usbDevice);
+      antAdapters.set(usbDevice.deviceId, adapter);
+
+      // When this stick finds a nearby wireless ANT+ sensor → push to renderer device list
+      adapter.on('antDeviceFound', (sensor: AntSensorDevice) => {
+        console.log(`[USB] ANT+ sensor discovered: ${sensor.deviceName}`);
+        mainWindow?.webContents.send('usb-device-found', {
+          deviceId: sensor.deviceId,
+          deviceName: sensor.deviceName,
+          protocol: 'ant-plus',
+        });
+      });
+
+      // When the adapter produces parsed fitness data → feed directly into broadcaster
+      adapter.on('data', (output) => {
+        broadcaster?.sendData(output);
+      });
+
+      adapter.on('error', (err: Error) => {
+        console.error(`[USB] ANT+ adapter error: ${err.message}`);
+      });
+
+      // Start scanning for nearby ANT+ sensors immediately
+      adapter.startScan();
+    }
+  });
+
+  // When a fitness USB stick is unplugged
+  usbDeviceManager.on('deviceLost', (stickDeviceId: string) => {
+    console.log(`[USB] Device lost: ${stickDeviceId}`);
+
+    const adapter = antAdapters.get(stickDeviceId);
+    if (adapter) {
+      adapter.disconnect();
+      antAdapters.delete(stickDeviceId);
+    }
+
+    mainWindow?.webContents.send('usb-device-lost', stickDeviceId);
+  });
+
+  usbDeviceManager.start();
+}
+
+// User selected an ANT+ sensor from the device list
+ipcMain.on('usb-connect-device', (_event, sensorDeviceId: string) => {
+  console.log(`[USB] Connecting to sensor: ${sensorDeviceId}`);
+
+  // Find which adapter owns this sensor (sensor IDs encode the ANT device number)
+  for (const adapter of antAdapters.values()) {
+    adapter.connect(sensorDeviceId);
+    return;
+  }
+
+  console.warn(`[USB] No adapter found for sensor: ${sensorDeviceId}`);
+});
+
+// User disconnected an ANT+ sensor
+ipcMain.on('usb-disconnect-device', () => {
+  console.log('[USB] Disconnecting ANT+ sensor');
+  antAdapters.forEach(adapter => adapter.disconnect());
+});
+
 // Pause lookout when user manually initiates a scan
 ipcMain.on('start-bluetooth-scan', () => {
   pauseLookoutForManualScan();
@@ -484,6 +570,9 @@ app.on('before-quit', () => {
   isQuitting = true;
   stopPowerSaveBlocker();
   broadcaster?.stop();
+  antAdapters.forEach(adapter => adapter.disconnect());
+  antAdapters.clear();
+  usbDeviceManager?.stop();
 });
 
 app.on('activate', () => {

@@ -10,6 +10,8 @@ import { FtmsOutput } from './fitness-data';
 export interface BluetoothDeviceInfo {
   deviceId: string;
   deviceName: string;
+  /** Connection protocol — undefined means BLE (legacy) */
+  protocol?: 'ble' | 'ant-plus' | 'direct-usb';
 }
 
 /**

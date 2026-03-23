@@ -211,6 +211,15 @@ section {
   margin-left: auto;
 }
 
+.filter-toggle + .filter-toggle {
+  margin-left: 0;
+}
+
+.filter-toggle.active {
+  background: #4cc9f0;
+  color: #1a1a2e;
+}
+
 .device-search {
   background: #3a3a5c;
   border: 1px solid rgba(76, 201, 240, 0.2);

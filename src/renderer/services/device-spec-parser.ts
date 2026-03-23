@@ -38,6 +38,7 @@ interface FieldCondition {
   flagOffset?: number;
   flagBit?: number;
   flagValue?: boolean;
+  byteEquals?: { offset: number; value: number };
 }
 
 interface StaticField {
@@ -65,9 +66,10 @@ interface DynamicField {
 
 interface ComputedField {
   name: string;
-  operation: 'multiply' | 'divide' | 'sum';
+  operation: 'multiply' | 'divide' | 'sum' | 'exponential';
   operands: string[];
   factor?: number;
+  base?: number;
   comment?: string;
 }
 
@@ -158,6 +160,13 @@ export class DeviceSpecParser {
   private identifiedSpecs = new Set<string>();
   /** Accumulated field values per spec — lets computed fields use data from multiple packet types */
   private accumulatedState = new Map<string, Record<string, number>>();
+
+  /**
+   * Per-spec cache of last-seen field values.
+   * Used for devices like Echelon that send different fields in separate packets
+   * (e.g. resistance in D1, cadence in D2) so computed fields can combine them.
+   */
+  private stateCache = new Map<string, Record<string, number>>();
 
   /**
    * Parse raw Bluetooth data using device specs.
@@ -429,6 +438,12 @@ export class DeviceSpecParser {
   }
 
   private checkCondition(condition: FieldCondition, value: DataView, offset: number, type: string): boolean {
+    // Packet-type byte check (e.g. only parse resistance from 0xd2 packets)
+    if (condition.byteEquals !== undefined) {
+      if (value.byteLength <= condition.byteEquals.offset) return false;
+      if (value.getUint8(condition.byteEquals.offset) !== condition.byteEquals.value) return false;
+    }
+
     // Flag-based condition
     if (condition.flagOffset !== undefined && condition.flagBit !== undefined) {
       const flags = value.getUint8(condition.flagOffset);
@@ -466,6 +481,12 @@ export class DeviceSpecParser {
           break;
         case 'sum':
           result = values.reduce((a, b) => a + b, 0);
+          break;
+        case 'exponential':
+          // result = base^operand[0], then multiply by factor
+          if (field.base === undefined) continue;
+          result = Math.pow(field.base, values[0]);
+          if (field.factor) result *= field.factor;
           break;
         default:
           continue;
