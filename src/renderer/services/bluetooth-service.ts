@@ -63,11 +63,15 @@ type RawDataCallback = (data: RawBluetoothData) => void;
 /** Callback type for connection status events */
 type ConnectionCallback = (connected: boolean, device?: DeviceInfo) => void;
 
+/** Callback type for subscription status (success or failure per characteristic) */
+type SubscriptionStatusCallback = (message: string) => void;
+
 class BluetoothService {
   private connectedDevice: BluetoothDevice | null = null;
   private gattServer: BluetoothRemoteGATTServer | null = null;
   private rawDataCallback: RawDataCallback | null = null;
   private connectionCallback: ConnectionCallback | null = null;
+  private subscriptionStatusCallback: SubscriptionStatusCallback | null = null;
   private subscriptions: CharacteristicSubscription[] = [];
 
   /**
@@ -98,6 +102,10 @@ class BluetoothService {
    */
   setSubscriptions(subscriptions: CharacteristicSubscription[]): void {
     this.subscriptions = subscriptions;
+  }
+
+  onSubscriptionStatus(callback: SubscriptionStatusCallback): void {
+    this.subscriptionStatusCallback = callback;
   }
 
   /**
@@ -235,6 +243,26 @@ class BluetoothService {
   }
 
   /**
+   * Write bytes to a specific characteristic.
+   * Used for devices that require an init/activation command after connecting (e.g. Echelon).
+   */
+  async writeCharacteristic(
+    serviceUuid: BluetoothUuid,
+    characteristicUuid: BluetoothUuid,
+    bytes: number[]
+  ): Promise<void> {
+    if (!this.gattServer) throw new Error('Not connected');
+
+    console.log(`[BluetoothService] Writing to service=${serviceUuid}, char=${characteristicUuid}, bytes=[${bytes.join(', ')}]`);
+
+    const service = await this.gattServer.getPrimaryService(serviceUuid);
+    const characteristic = await service.getCharacteristic(characteristicUuid);
+    await characteristic.writeValue(new Uint8Array(bytes));
+
+    console.log(`[BluetoothService] Write successful to ${characteristicUuid}`);
+  }
+
+  /**
    * Subscribe to all configured characteristics.
    */
   private async subscribeToCharacteristics(): Promise<void> {
@@ -272,9 +300,12 @@ class BluetoothService {
 
       await characteristic.startNotifications();
       console.log(`[BluetoothService] Subscribed successfully to ${characteristicUuid}`);
+      this.subscriptionStatusCallback?.(`Subscribed OK → ${characteristicUuid}`);
       return true;
     } catch (error) {
+      const msg = (error as Error).message ?? String(error);
       console.log(`[BluetoothService] Failed to subscribe to service=${serviceUuid}, char=${characteristicUuid}:`, error);
+      this.subscriptionStatusCallback?.(`Subscribe failed → ${characteristicUuid}: ${msg}`);
       return false;
     }
   }

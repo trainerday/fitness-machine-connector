@@ -77,16 +77,14 @@ export interface ElectronAPI {
   // .NET backend events
   onDeviceConnectedViaDotnet: (callback: (device: { id: string; name: string }) => void) => void;
   onFitnessDataFromDotnet: (callback: (data: { power?: number; cadence?: number; heartRate?: number; source?: string }) => void) => void;
+  onRawDataFromDotnet: (callback: (data: { characteristicUuid: string; bytes: number[] }) => void) => void;
+  writeCharacteristicViaDotnet: (serviceUuid: string, characteristicUuid: string, bytes: number[]) => void;
   onAutoReconnectFailed: (callback: (info: { deviceName: string; reason: string }) => void) => void;
   onLookoutStatus: (callback: (status: { active: boolean; deviceName?: string }) => void) => void;
   removeDotnetListeners: () => void;
 
-  // USB / ANT+ device controls
-  connectUsbDevice: (deviceId: string) => void;
-  disconnectUsbDevice: () => void;
-  onUsbDeviceFound: (callback: (device: BluetoothDeviceInfo) => void) => void;
-  onUsbDeviceLost: (callback: (deviceId: string) => void) => void;
-  removeUsbListeners: () => void;
+  // Logging
+  logToMain: (message: string) => void;
 }
 
 declare global {

@@ -272,4 +272,6 @@ export class MacBleBackend extends EventEmitter {
   setAutoReconnect(_enabled: boolean, _deviceId?: string, _deviceName?: string): void {}
   isScanningDevices(): boolean { return false; }
   getConnectedDevice(): null { return null; }
+  /** On macOS init writes go through Web Bluetooth (BluetoothService.writeCharacteristic), not the broadcaster */
+  writeCharacteristic(_serviceUuid: string, _charUuid: string, _bytes: number[]): void {}
 }

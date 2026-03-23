@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -112,9 +113,9 @@ scanner.OnScanComplete += count =>
 
 // Hook up connection events
 connection.OnLog += message => Log(message);
-connection.OnDataReceived += (data, source) =>
+connection.OnRawDataReceived += (characteristicUuid, bytes) =>
 {
-    // Start FTMS server on first data if not already started
+    // Start FTMS server on first raw data if not already started
     if (!ftmsStarted)
     {
         _ = Task.Run(async () =>
@@ -124,20 +125,15 @@ connection.OnDataReceived += (data, source) =>
         });
     }
 
-    // Send data event to Electron
+    // Send raw bytes to Electron (int[] avoids base64 serialization)
     SendEvent(new
     {
-        type = "data",
-        power = data.Power > 0 ? data.Power : (int?)null,
-        cadence = data.Cadence > 0 ? data.Cadence : (double?)null,
-        heartRate = data.HeartRate > 0 ? data.HeartRate : (int?)null,
-        speed = data.Speed > 0 ? data.Speed : (double?)null,
-        resistance = data.Resistance > 0 ? data.Resistance : (int?)null,
-        source
+        type = "rawData",
+        characteristicUuid,
+        bytes = bytes.Select(b => (int)b).ToArray()
     });
-
-    // Also update FTMS server with the data
-    server.UpdateData(data);
+    // NOTE: server.UpdateData() is NOT called here.
+    // FTMS updates arrive via the legacy broadcaster-send-data path from the renderer.
 };
 connection.OnDisconnected += reason =>
 {
@@ -345,6 +341,25 @@ async Task HandleCommand(string line)
                     else
                     {
                         Log("Auto-reconnect disabled");
+                    }
+                }
+                break;
+
+            case "writeCharacteristic":
+                if (root.TryGetProperty("serviceUuid", out var svcUuidEl) &&
+                    root.TryGetProperty("characteristicUuid", out var charUuidEl) &&
+                    root.TryGetProperty("bytes", out var bytesEl))
+                {
+                    try
+                    {
+                        var serviceUuid = Guid.Parse(svcUuidEl.GetString()!);
+                        var charUuid = Guid.Parse(charUuidEl.GetString()!);
+                        var writeBytes = bytesEl.EnumerateArray().Select(el => (byte)el.GetInt32()).ToArray();
+                        await connection.WriteCharacteristicAsync(serviceUuid, charUuid, writeBytes);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"writeCharacteristic command error: {ex.Message}", "error");
                     }
                 }
                 break;

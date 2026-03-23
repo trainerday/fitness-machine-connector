@@ -74,6 +74,17 @@ export function setupIpcHandlers(
     });
   });
 
+  broadcaster.on('rawData', (data: { characteristicUuid: string; bytes: number[] }) => {
+    const windows = BrowserWindow.getAllWindows();
+    windows.forEach((win) => {
+      win.webContents.send('raw-data-from-dotnet', data);
+    });
+  });
+
+  ipcMain.on('broadcaster-write-characteristic', (_event, { serviceUuid, characteristicUuid, bytes }: { serviceUuid: string; characteristicUuid: string; bytes: number[] }) => {
+    broadcaster.writeCharacteristic(serviceUuid, characteristicUuid, bytes);
+  });
+
   // Device persistence handlers
   ipcMain.on('save-last-device', (_event, device: { id: string; name: string }) => {
     console.log('[IPC] Received save-last-device:', device);
@@ -89,5 +100,10 @@ export function setupIpcHandlers(
 
   ipcMain.on('clear-last-device', () => {
     clearLastDevice();
+  });
+
+  // Forward renderer log messages to the main process terminal
+  ipcMain.on('log-to-main', (_event, message: string) => {
+    console.log('[Renderer]', message);
   });
 }

@@ -6,36 +6,48 @@
   "serviceUuid": "0bf669f0-45f2-11e7-9598-0800200c9a66",
   "characteristicUuid": "0bf669f4-45f2-11e7-9598-0800200c9a66",
 
-  "minLength": 4,
+  "initWrites": [
+    {
+      "characteristicUuid": "0bf669f2-45f2-11e7-9598-0800200c9a66",
+      "bytes": [240, 176, 1, 1, 162],
+      "comment": "Activation command — tells the bike to start streaming workout data"
+    }
+  ],
 
-  "fields": [
+  "packets": [
     {
-      "name": "resistance",
-      "offset": 3,
-      "type": "uint8",
-      "condition": {
-        "byteEquals": { "offset": 1, "value": 210 },
-        "min": 1,
-        "max": 32
-      },
-      "comment": "Resistance level 1-32. Only present in 0xd2 (210) packets. 0xd1 packets have a sequence counter at byte 3, not resistance."
+      "comment": "D1 packet — cadence and heart rate",
+      "validation": { "magicBytes": [{ "offset": 1, "value": 209 }] },
+      "minLength": 12,
+      "fields": [
+        {
+          "name": "cadence",
+          "offset": 9,
+          "type": "uint16",
+          "endian": "big",
+          "comment": "Cadence in RPM (big-endian uint16)"
+        },
+        {
+          "name": "heartRate",
+          "offset": 11,
+          "type": "uint8",
+          "condition": { "min": 1, "max": 250 },
+          "comment": "Heart rate from connected HR strap"
+        }
+      ]
     },
     {
-      "name": "cadence",
-      "offset": 9,
-      "type": "uint16",
-      "endian": "big",
-      "comment": "Cadence in RPM (big-endian)"
-    },
-    {
-      "name": "heartRate",
-      "offset": 11,
-      "type": "uint8",
-      "condition": {
-        "min": 1,
-        "max": 250
-      },
-      "comment": "Heart rate from connected HR strap (if available)"
+      "comment": "D2 packet — resistance level",
+      "validation": { "magicBytes": [{ "offset": 1, "value": 210 }] },
+      "minLength": 4,
+      "fields": [
+        {
+          "name": "resistance",
+          "offset": 3,
+          "type": "uint8",
+          "comment": "Resistance level 0-32"
+        }
+      ]
     }
   ],
 
@@ -57,9 +69,9 @@
     {
       "name": "power",
       "operation": "multiply",
-      "operands": ["_resFactor", "_cadFactor"],
-      "factor": 7.228958,
-      "comment": "power = 1.090112^resistance * 1.015343^cadence * 7.228958 (community formula from snowzach/echbt)"
+      "operands": ["cadence", "resistance"],
+      "factor": 0.08,
+      "comment": "Estimated power — computed from accumulated cadence (D1) × resistance (D2)"
     }
   ]
 }
