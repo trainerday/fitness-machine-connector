@@ -38,6 +38,7 @@ interface FieldCondition {
   flagOffset?: number;
   flagBit?: number;
   flagValue?: boolean;
+  byteEquals?: { offset: number; value: number };
 }
 
 interface StaticField {
@@ -141,6 +142,13 @@ deviceSpecs.forEach(spec => {
 
 export class DeviceSpecParser {
   /**
+   * Per-spec cache of last-seen field values.
+   * Used for devices like Echelon that send different fields in separate packets
+   * (e.g. resistance in D1, cadence in D2) so computed fields can combine them.
+   */
+  private stateCache = new Map<string, Record<string, number>>();
+
+  /**
    * Parse raw Bluetooth data using device specs.
    */
   parse(characteristicUuid: BluetoothUuid, rawValue: DataView): FitnessData {
@@ -220,9 +228,24 @@ export class DeviceSpecParser {
       data = {};
     }
 
-    // Apply computed fields
-    if (spec.computed) {
-      this.applyComputedFields(spec.computed, data);
+    // Apply computed fields.
+    // For specs with computed fields, merge with the per-spec state cache first
+    // so that values arriving in separate packets (e.g. Echelon D1/D2) are combined.
+    if (spec.computed && spec.computed.length > 0) {
+      const cached = this.stateCache.get(spec.id) ?? {};
+      const merged = { ...cached, ...(data as Record<string, number>) };
+      if (spec.id === 'echelon') {
+        console.log(`[Echelon] raw packet bytes: ${Array.from({length: value.byteLength}, (_, i) => '0x' + value.getUint8(i).toString(16).padStart(2,'0')).join(' ')}`);
+        console.log(`[Echelon] parsed this packet:`, JSON.stringify(data));
+        console.log(`[Echelon] cache before merge:`, JSON.stringify(cached));
+        console.log(`[Echelon] merged:`, JSON.stringify(merged));
+      }
+      this.stateCache.set(spec.id, merged);
+      this.applyComputedFields(spec.computed, merged as FitnessData);
+      if (spec.id === 'echelon') {
+        console.log(`[Echelon] after computed → power: ${(merged as Record<string, number>)['power']}, cadence: ${(merged as Record<string, number>)['cadence']}, resistance: ${(merged as Record<string, number>)['resistance']}`);
+      }
+      data = merged as FitnessData;
     }
 
     // Set source type
@@ -353,6 +376,12 @@ export class DeviceSpecParser {
   }
 
   private checkCondition(condition: FieldCondition, value: DataView, offset: number, type: string): boolean {
+    // Packet-type byte check (e.g. only parse resistance from 0xd2 packets)
+    if (condition.byteEquals !== undefined) {
+      if (value.byteLength <= condition.byteEquals.offset) return false;
+      if (value.getUint8(condition.byteEquals.offset) !== condition.byteEquals.value) return false;
+    }
+
     // Flag-based condition
     if (condition.flagOffset !== undefined && condition.flagBit !== undefined) {
       const flags = value.getUint8(condition.flagOffset);

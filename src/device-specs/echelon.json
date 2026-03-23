@@ -13,7 +13,12 @@
       "name": "resistance",
       "offset": 3,
       "type": "uint8",
-      "comment": "Resistance level 0-32"
+      "condition": {
+        "byteEquals": { "offset": 1, "value": 210 },
+        "min": 1,
+        "max": 32
+      },
+      "comment": "Resistance level 1-32. Only present in 0xd2 (210) packets. 0xd1 packets have a sequence counter at byte 3, not resistance."
     },
     {
       "name": "cadence",
