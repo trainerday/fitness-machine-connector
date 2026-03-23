@@ -41,11 +41,25 @@
 
   "computed": [
     {
+      "name": "_resFactor",
+      "operation": "exponential",
+      "operands": ["resistance"],
+      "base": 1.090112,
+      "comment": "1.090112^resistance — exponential resistance component"
+    },
+    {
+      "name": "_cadFactor",
+      "operation": "exponential",
+      "operands": ["cadence"],
+      "base": 1.015343,
+      "comment": "1.015343^cadence — exponential cadence component"
+    },
+    {
       "name": "power",
       "operation": "multiply",
-      "operands": ["cadence", "resistance"],
-      "factor": 0.15,
-      "comment": "Estimated power - Echelon doesn't report power directly"
+      "operands": ["_resFactor", "_cadFactor"],
+      "factor": 7.228958,
+      "comment": "power = 1.090112^resistance * 1.015343^cadence * 7.228958 (community formula from snowzach/echbt)"
     }
   ]
 }

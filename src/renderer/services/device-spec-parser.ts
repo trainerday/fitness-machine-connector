@@ -66,9 +66,10 @@ interface DynamicField {
 
 interface ComputedField {
   name: string;
-  operation: 'multiply' | 'divide' | 'sum';
+  operation: 'multiply' | 'divide' | 'sum' | 'exponential';
   operands: string[];
   factor?: number;
+  base?: number;
   comment?: string;
 }
 
@@ -419,6 +420,12 @@ export class DeviceSpecParser {
           break;
         case 'sum':
           result = values.reduce((a, b) => a + b, 0);
+          break;
+        case 'exponential':
+          // result = base^operand[0], then multiply by factor
+          if (field.base === undefined) continue;
+          result = Math.pow(field.base, values[0]);
+          if (field.factor) result *= field.factor;
           break;
         default:
           continue;
