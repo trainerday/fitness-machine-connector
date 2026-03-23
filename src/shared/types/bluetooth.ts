@@ -10,6 +10,8 @@ import { FtmsOutput } from './fitness-data';
 export interface BluetoothDeviceInfo {
   deviceId: string;
   deviceName: string;
+  /** Connection protocol — undefined means BLE (legacy) */
+  protocol?: 'ble' | 'ant-plus' | 'direct-usb';
 }
 
 /**
@@ -78,6 +80,13 @@ export interface ElectronAPI {
   onAutoReconnectFailed: (callback: (info: { deviceName: string; reason: string }) => void) => void;
   onLookoutStatus: (callback: (status: { active: boolean; deviceName?: string }) => void) => void;
   removeDotnetListeners: () => void;
+
+  // USB / ANT+ device controls
+  connectUsbDevice: (deviceId: string) => void;
+  disconnectUsbDevice: () => void;
+  onUsbDeviceFound: (callback: (device: BluetoothDeviceInfo) => void) => void;
+  onUsbDeviceLost: (callback: (deviceId: string) => void) => void;
+  removeUsbListeners: () => void;
 }
 
 declare global {

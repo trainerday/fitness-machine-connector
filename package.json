@@ -47,6 +47,8 @@
   },
   "dependencies": {
     "@stoprocent/bleno": "^0.12.1",
-    "electron-squirrel-startup": "^1.0.1"
+    "ant-plus": "^0.2.0",
+    "electron-squirrel-startup": "^1.0.1",
+    "usb": "^2.17.0"
   }
 }

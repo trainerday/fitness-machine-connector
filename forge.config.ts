@@ -15,7 +15,7 @@ const config: ForgeConfig = {
     asar: {
       // Unpack @stoprocent so its .node binaries land in app.asar.unpacked
       // and can be loaded by dlopen at runtime (binaries can't run from inside asar).
-      unpack: '**/node_modules/@stoprocent/**',
+      unpack: '**/node_modules/{@stoprocent,usb,ant-plus}/**',
     },
     executableName: process.platform === 'linux' ? 'fitbridge' : 'FitBridge',
     extraResource: [
@@ -34,7 +34,7 @@ const config: ForgeConfig = {
         // @stoprocent/bleno is a native module that must be require()d at runtime,
         // so we copy it plus its runtime deps (debug, ms, node-gyp-build) manually.
         // On Windows bleno won't be installed (optional dep) so we skip it safely.
-        const packages = ['@stoprocent', 'debug', 'ms', 'node-gyp-build'];
+        const packages = ['@stoprocent', 'debug', 'ms', 'node-gyp-build', 'usb', 'ant-plus', 'node-addon-api'];
         const srcRoot = path.join(__dirname, 'node_modules');
         const destRoot = path.join(buildPath, 'node_modules');
         fs.mkdirSync(destRoot, { recursive: true });

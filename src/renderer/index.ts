@@ -152,16 +152,28 @@ async function handleScan(): Promise<void> {
  * Handle device selection from the displayed list.
  * Called when user clicks a device in the list.
  */
-function handleDeviceSelection(deviceId: string, deviceName: string): void {
+function handleDeviceSelection(deviceId: string, deviceName: string, protocol?: string): void {
   activityLog.log(`Selecting ${deviceName || 'Unknown'}...`);
 
-  // Stop listening for scan results
+  const isUsb = protocol === 'ant-plus' || protocol === 'direct-usb';
+
+  if (isUsb) {
+    // USB / ANT+ path: main process owns the connection, no BLE scan to resolve
+    if (window.electronAPI) {
+      window.electronAPI.connectUsbDevice(deviceId);
+    }
+    deviceList.hide();
+    statusIndicator.setConnected(deviceName);
+    startUpdateInterval();
+    return;
+  }
+
+  // BLE path (existing behaviour)
   awaitingScanResults = false;
   scanInProgress = false;
   deviceList.setScanning(false);
   statusIndicator.setScanning(false);
 
-  // Tell main process which device was selected
   if (window.electronAPI) {
     window.electronAPI.selectBluetoothDevice(deviceId);
   }
@@ -396,6 +408,17 @@ function setupIpcListeners(): void {
     } else {
       statusIndicator.clearLookout();
     }
+  });
+
+  // USB / ANT+ device events — appear in the same list as BLE devices
+  window.electronAPI.onUsbDeviceFound((device) => {
+    console.log(`[USB] Device found: ${device.deviceName} (${device.deviceId})`);
+    deviceList.addDevice(device);
+  });
+
+  window.electronAPI.onUsbDeviceLost((deviceId) => {
+    console.log(`[USB] Device lost: ${deviceId}`);
+    deviceList.removeDevice(deviceId);
   });
 }
 
