@@ -92,10 +92,18 @@ function checkBluetoothAvailability(): boolean {
  * Handle scan button click.
  * Initiates device scanning and connection flow.
  * Can be clicked anytime to restart scanning.
+ * @param manual - true when triggered by the user (resets auto-reconnect state)
  */
-async function handleScan(): Promise<void> {
+async function handleScan(manual = false): Promise<void> {
   // Always refresh the UI and device cache regardless of whether a scan is running
   deviceList.clear();
+
+  if (manual) {
+    // User clicked scan — cancel any pending auto-reconnect so the list isn't suppressed
+    autoReconnectMode = false;
+    autoReconnectDeviceName = null;
+  }
+
   if (!autoReconnectMode) {
     activityLog.log('Scanning for Bluetooth devices...');
     deviceList.setScanning(true);
@@ -501,7 +509,7 @@ async function init(): Promise<void> {
   }
 
   // Set up UI event handlers
-  statusIndicator.onScanClick(handleScan);
+  statusIndicator.onScanClick(() => handleScan(true));
   statusIndicator.onDisconnectClick(handleDisconnect);
   deviceList.onSelect(handleDeviceSelection);
 
