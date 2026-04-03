@@ -2,7 +2,7 @@
  * Main process entry point - handles window lifecycle
  */
 
-import { app, BrowserWindow, Tray, Menu, nativeImage, powerMonitor, session, ipcMain } from 'electron';
+import { app, BrowserWindow, Tray, Menu, shell, nativeImage, powerMonitor, session, ipcMain } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { BluetoothDeviceManager } from './bluetooth-device-manager';
@@ -169,8 +169,31 @@ app.on('ready', () => {
   // Don't initialize if we're the second instance (should never reach here, but defensive check)
   if (!gotSingleInstanceLock) return;
 
-  // Remove default Electron menu bar
-  Menu.setApplicationMenu(null);
+  // Set application menu — minimal but includes Help > Contact Support
+  const menu = Menu.buildFromTemplate([
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'Contact Support',
+          click: () => shell.openExternal('mailto:dand@prakitkconsulting.com?subject=FitBridge Support'),
+        },
+      ],
+    },
+  ]);
+  Menu.setApplicationMenu(menu);
 
   // Initialize managers only when we have the lock and app is ready
   deviceManager = new BluetoothDeviceManager();
