@@ -169,6 +169,9 @@ app.on('ready', () => {
   // Don't initialize if we're the second instance (should never reach here, but defensive check)
   if (!gotSingleInstanceLock) return;
 
+  // Remove default Electron menu bar
+  Menu.setApplicationMenu(null);
+
   // Initialize managers only when we have the lock and app is ready
   deviceManager = new BluetoothDeviceManager();
   broadcaster = new BluetoothBroadcaster();
