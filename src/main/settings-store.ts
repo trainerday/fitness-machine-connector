@@ -10,7 +10,11 @@ const defaults: AppSettings = {
 const store = new Store<AppSettings>({ defaults });
 
 export function getSettings(): AppSettings {
-  return store.store as AppSettings;
+  return {
+    theme: store.get('theme', defaults.theme),
+    liveDataMode: store.get('liveDataMode', defaults.liveDataMode),
+    trustedDevices: store.get('trustedDevices', defaults.trustedDevices),
+  };
 }
 
 export function setSetting<K extends keyof AppSettings>(key: K, value: AppSettings[K]): void {
@@ -18,7 +22,7 @@ export function setSetting<K extends keyof AppSettings>(key: K, value: AppSettin
 }
 
 export function addTrustedDevice(id: string, name: string): void {
-  const current = store.get('trustedDevices') as TrustedDevice[];
+  const current: TrustedDevice[] = store.get('trustedDevices', []);
   if (!current.some(d => d.id === id)) {
     store.set('trustedDevices', [...current, { id, name }]);
   }
