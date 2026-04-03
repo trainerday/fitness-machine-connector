@@ -9,7 +9,25 @@
       <header>
         <h1>FitBridge</h1>
         <p class="subtitle">Connect fitness devices and broadcast as FTMS</p>
+        <button id="settings-btn" class="settings-btn" title="Settings">&#9881;</button>
       </header>
+
+      <div id="settings-panel" class="settings-panel" style="display: none;">
+        <div class="settings-row">
+          <span class="settings-label">Theme</span>
+          <div class="settings-options">
+            <button class="settings-option" data-setting="theme" data-value="light">Light</button>
+            <button class="settings-option" data-setting="theme" data-value="dark">Dark</button>
+          </div>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">Live Data</span>
+          <div class="settings-options">
+            <button class="settings-option" data-setting="liveDataMode" data-value="device">Device View</button>
+            <button class="settings-option" data-setting="liveDataMode" data-value="ftms">FTMS Only</button>
+          </div>
+        </div>
+      </div>
 
       <section class="connection-section">
         <div class="status-bar">

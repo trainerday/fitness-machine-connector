@@ -1,15 +1,15 @@
 /**
- * Data display UI component - shows live fitness data and FTMS output
+ * Data display UI component - shows live fitness data and FTMS output.
  *
- * Live Data: Dynamically shows fields specific to the connected device type
- * FTMS Output: Shows the core fields (Power, Cadence, HR) with expandable additional fields
+ * Live Data fields are derived directly from device spec JSON files via DeviceSpecParser,
+ * so adding a new device spec automatically gets proper display with no code changes here.
+ *
+ * The FIELD_DISPLAY_MAP is the only thing to update when a new type of field is invented.
  */
 
-import { FitnessData, FtmsOutput } from '../../shared/types';
+import { FitnessData, FtmsOutput, AppSettings } from '../../shared/types';
+import { DeviceSpecParser } from '../services/device-spec-parser';
 
-/**
- * Field configuration for a data card
- */
 interface FieldConfig {
   id: string;
   label: string;
@@ -17,140 +17,108 @@ interface FieldConfig {
   getValue: (data: FitnessData) => string;
 }
 
-/**
- * Device-specific field configurations
- */
-const KEISER_M3I_FIELDS: FieldConfig[] = [
-  { id: 'power', label: 'Power', unit: 'W', getValue: (d) => d.power !== undefined ? Math.round(d.power).toString() : '--' },
-  { id: 'cadence', label: 'Cadence', unit: 'RPM', getValue: (d) => d.cadence !== undefined ? Math.round(d.cadence).toString() : '--' },
-  { id: 'hr', label: 'Heart Rate', unit: 'BPM', getValue: (d) => d.heartRate !== undefined ? Math.round(d.heartRate).toString() : '--' },
-  { id: 'calories', label: 'Calories', unit: 'kcal', getValue: (d) => d.calories !== undefined ? Math.round(d.calories).toString() : '--' },
-  { id: 'duration', label: 'Duration', unit: '', getValue: (d) => d.duration !== undefined ? formatDuration(d.duration) : '--' },
-  { id: 'distance', label: 'Distance', unit: 'mi', getValue: (d) => d.distance !== undefined ? (d.distance / 1.60934).toFixed(2) : '--' }, // Convert back to miles for display
-  { id: 'gear', label: 'Gear', unit: '', getValue: (d) => d.gear !== undefined ? d.gear.toString() : '--' },
-];
-
-const FTMS_FIELDS: FieldConfig[] = [
-  { id: 'speed', label: 'Inst. Speed', unit: 'km/h', getValue: (d) => d.speed !== undefined ? d.speed.toFixed(1) : '--' },
-  { id: 'cadence', label: 'Inst. Cadence', unit: 'RPM', getValue: (d) => d.cadence !== undefined ? Math.round(d.cadence).toString() : '--' },
-  { id: 'power', label: 'Inst. Power', unit: 'W', getValue: (d) => d.power !== undefined ? Math.round(d.power).toString() : '--' },
-  { id: 'hr', label: 'Heart Rate', unit: 'BPM', getValue: (d) => d.heartRate !== undefined ? Math.round(d.heartRate).toString() : '--' },
-  { id: 'distance', label: 'Total Distance', unit: 'm', getValue: (d) => d.distance !== undefined ? Math.round(d.distance * 1000).toString() : '--' },
-  { id: 'calories', label: 'Total Energy', unit: 'kcal', getValue: (d) => d.calories !== undefined ? Math.round(d.calories).toString() : '--' },
-  { id: 'resistance', label: 'Resistance', unit: '', getValue: (d) => d.resistance !== undefined ? d.resistance.toFixed(1) : '--' },
-  { id: 'duration', label: 'Elapsed Time', unit: '', getValue: (d) => d.duration !== undefined ? formatDuration(d.duration) : '--' },
-];
-
-const CYCLING_POWER_FIELDS: FieldConfig[] = [
-  { id: 'power', label: 'Inst. Power', unit: 'W', getValue: (d) => d.power !== undefined ? Math.round(d.power).toString() : '--' },
-];
-
-const HEART_RATE_FIELDS: FieldConfig[] = [
-  { id: 'hr', label: 'Heart Rate', unit: 'BPM', getValue: (d) => d.heartRate !== undefined ? Math.round(d.heartRate).toString() : '--' },
-];
-
-/**
- * Format duration in seconds to MM:SS or HH:MM:SS
- */
 function formatDuration(seconds: number): string {
   const hrs = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
   const secs = seconds % 60;
-
   if (hrs > 0) {
     return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   }
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-/** Core fields shown for all device types */
-const CORE_FIELDS: FieldConfig[] = [
-  { id: 'power', label: 'Power', unit: 'W', getValue: (d) => d.power !== undefined ? Math.round(d.power).toString() : '--' },
-  { id: 'cadence', label: 'Cadence', unit: 'RPM', getValue: (d) => d.cadence !== undefined ? Math.round(d.cadence).toString() : '--' },
-  { id: 'hr', label: 'Heart Rate', unit: 'BPM', getValue: (d) => d.heartRate !== undefined ? Math.round(d.heartRate).toString() : '--' },
-];
-
 /**
- * Get field configuration for a source type
+ * Universal display config for every field name that can appear in FitnessData.
+ * Update this when a new field type is added to the system, not when a new device is added.
  */
-function getFieldsForSource(_sourceType: FitnessData['sourceType']): FieldConfig[] {
-  return CORE_FIELDS;
+const FIELD_DISPLAY_MAP: Record<string, { label: string; unit: string; getValue: (data: FitnessData) => string }> = {
+  power:      { label: 'Power',      unit: 'W',    getValue: (d) => d.power      !== undefined ? Math.round(d.power).toString()      : '--' },
+  cadence:    { label: 'Cadence',    unit: 'RPM',  getValue: (d) => d.cadence    !== undefined ? Math.round(d.cadence).toString()    : '--' },
+  heartRate:  { label: 'Heart Rate', unit: 'BPM',  getValue: (d) => d.heartRate  !== undefined ? Math.round(d.heartRate).toString()  : '--' },
+  speed:      { label: 'Speed',      unit: 'km/h', getValue: (d) => d.speed      !== undefined ? d.speed.toFixed(1)                  : '--' },
+  calories:   { label: 'Calories',   unit: 'kcal', getValue: (d) => d.calories   !== undefined ? Math.round(d.calories).toString()   : '--' },
+  duration:   { label: 'Duration',   unit: '',     getValue: (d) => d.duration   !== undefined ? formatDuration(d.duration)          : '--' },
+  distance:   { label: 'Distance',   unit: 'km',   getValue: (d) => d.distance   !== undefined ? d.distance.toFixed(2)               : '--' },
+  gear:       { label: 'Gear',       unit: '',     getValue: (d) => d.gear       !== undefined ? Math.round(d.gear).toString()       : '--' },
+  resistance: { label: 'Resistance', unit: '',     getValue: (d) => d.resistance !== undefined ? d.resistance.toString()             : '--' },
+};
+
+const FTMS_ONLY_FIELDS = ['power', 'cadence', 'heartRate'];
+
+function buildFieldConfigs(fieldNames: string[]): FieldConfig[] {
+  return fieldNames
+    .map(name => {
+      const display = FIELD_DISPLAY_MAP[name];
+      if (!display) return null;
+      return { id: name, ...display };
+    })
+    .filter((f): f is FieldConfig => f !== null);
 }
 
-/**
- * Get display name for a source type
- */
-function getSourceDisplayName(sourceType: FitnessData['sourceType']): string {
-  switch (sourceType) {
-    case 'keiser-m3i':
-      return 'Keiser M3i';
-    case 'ftms':
-      return 'FTMS';
-    case 'cycling-power':
-      return 'Cycling Power';
-    case 'heart-rate':
-      return 'Heart Rate';
-    default:
-      return '--';
-  }
-}
+const DEFAULT_SETTINGS: AppSettings = {
+  theme: 'light',
+  liveDataMode: 'device',
+};
 
 export class DataDisplay {
   private liveDataGrid: HTMLElement;
   private sourceTypeElement: HTMLSpanElement;
   private currentSourceType: FitnessData['sourceType'] | null = null;
   private liveFieldElements: Map<string, HTMLSpanElement> = new Map();
+  private settings: AppSettings = { ...DEFAULT_SETTINGS };
 
-  // FTMS output elements
   private ftmsElements: {
     power: HTMLSpanElement;
     cadence: HTMLSpanElement;
     hr: HTMLSpanElement;
   };
 
-  constructor() {
+  constructor(private parser: DeviceSpecParser) {
     this.liveDataGrid = this.getElement('live-data-grid');
     this.sourceTypeElement = this.getElement('source-type') as HTMLSpanElement;
 
     this.ftmsElements = {
-      power: this.getElement('ftms-power') as HTMLSpanElement,
+      power:   this.getElement('ftms-power')   as HTMLSpanElement,
       cadence: this.getElement('ftms-cadence') as HTMLSpanElement,
-      hr: this.getElement('ftms-hr') as HTMLSpanElement,
+      hr:      this.getElement('ftms-hr')      as HTMLSpanElement,
     };
   }
 
   private getElement(id: string): HTMLElement {
     const element = document.getElementById(id);
-    if (!element) {
-      throw new Error(`Data display element not found: ${id}`);
-    }
+    if (!element) throw new Error(`Data display element not found: ${id}`);
     return element;
   }
 
-  /**
-   * Update the display with new fitness data
-   */
+  updateSettings(settings: AppSettings): void {
+    const modeChanged = settings.liveDataMode !== this.settings.liveDataMode;
+    this.settings = settings;
+    if (this.currentSourceType && modeChanged) {
+      this.buildLiveDataSection(this.currentSourceType);
+    }
+  }
+
   update(data: FitnessData): void {
-    // Check if source type changed - rebuild live data section if needed
     if (data.sourceType && data.sourceType !== this.currentSourceType) {
       this.buildLiveDataSection(data.sourceType);
       this.currentSourceType = data.sourceType;
-      this.sourceTypeElement.textContent = getSourceDisplayName(data.sourceType);
+      this.sourceTypeElement.textContent = this.parser.getSpecName(String(data.sourceType));
     }
 
-    // Update live data section
     this.updateLiveData(data);
-
-    // Convert to FTMS and update FTMS output section
-    const ftmsOutput = this.convertToFtms(data);
-    this.updateFtmsOutput(ftmsOutput);
+    this.updateFtmsOutput(this.convertToFtms(data));
   }
 
-  /**
-   * Build the live data section dynamically based on source type
-   */
+  private getFields(sourceType: FitnessData['sourceType']): FieldConfig[] {
+    if (this.settings.liveDataMode === 'ftms') {
+      return buildFieldConfigs(FTMS_ONLY_FIELDS);
+    }
+    const fieldNames = this.parser.getDisplayFields(String(sourceType ?? ''));
+    return buildFieldConfigs(fieldNames);
+  }
+
   private buildLiveDataSection(sourceType: FitnessData['sourceType']): void {
-    const fields = getFieldsForSource(sourceType);
+    const fields = this.getFields(sourceType);
     this.liveFieldElements.clear();
     this.liveDataGrid.innerHTML = '';
 
@@ -176,13 +144,8 @@ export class DataDisplay {
     }
   }
 
-  /**
-   * Update the live data display with raw incoming data
-   */
   private updateLiveData(data: FitnessData): void {
-    const fields = getFieldsForSource(data.sourceType);
-
-    for (const field of fields) {
+    for (const field of this.getFields(data.sourceType)) {
       const element = this.liveFieldElements.get(field.id);
       if (element) {
         element.textContent = field.getValue(data);
@@ -190,40 +153,28 @@ export class DataDisplay {
     }
   }
 
-  /**
-   * Update the FTMS output display
-   */
   private updateFtmsOutput(output: FtmsOutput): void {
-    this.ftmsElements.power.textContent = Math.round(output.power).toString();
+    this.ftmsElements.power.textContent   = Math.round(output.power).toString();
     this.ftmsElements.cadence.textContent = Math.round(output.cadence).toString();
-    this.ftmsElements.hr.textContent = output.heartRate !== undefined ? Math.round(output.heartRate).toString() : '--';
+    this.ftmsElements.hr.textContent      = output.heartRate !== undefined ? Math.round(output.heartRate).toString() : '--';
   }
 
-  /**
-   * Convert raw fitness data to FTMS output format.
-   * Only passes through data that the device provides - no calculations.
-   */
   private convertToFtms(data: FitnessData): FtmsOutput {
     return {
-      power: data.power ?? 0,
-      cadence: data.cadence ?? 0,
+      power:     data.power ?? 0,
+      cadence:   data.cadence ?? 0,
       heartRate: data.heartRate,
     };
   }
 
-  /**
-   * Reset all values to default state
-   */
   reset(): void {
-    // Reset live data section
     this.currentSourceType = null;
     this.liveFieldElements.clear();
     this.liveDataGrid.innerHTML = '<div class="no-data">Connect a device to see live data</div>';
     this.sourceTypeElement.textContent = '--';
 
-    // Reset FTMS output
-    this.ftmsElements.power.textContent = '--';
+    this.ftmsElements.power.textContent   = '--';
     this.ftmsElements.cadence.textContent = '--';
-    this.ftmsElements.hr.textContent = '--';
+    this.ftmsElements.hr.textContent      = '--';
   }
 }

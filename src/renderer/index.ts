@@ -25,7 +25,7 @@ import '../styles/index.css';
 import { ActivityLog, DataDisplay, StatusIndicator, DeviceList } from './ui';
 import { FitnessDataReader } from './services';
 import { deviceSpecParser } from './services/device-spec-parser';
-import { BluetoothDeviceInfo, FitnessData, FtmsOutput } from '../shared/types';
+import { AppSettings, BluetoothDeviceInfo, FitnessData, FtmsOutput } from '../shared/types';
 
 // =============================================================================
 // STATE
@@ -507,6 +507,56 @@ function stopUpdateInterval(): void {
 // INITIALIZATION
 // =============================================================================
 
+// =============================================================================
+// SETTINGS
+// =============================================================================
+
+function applyTheme(theme: AppSettings['theme']): void {
+  document.body.classList.toggle('light-theme', theme === 'light');
+}
+
+function setupSettingsPanel(initialSettings: AppSettings): void {
+  const btn = document.getElementById('settings-btn');
+  const panel = document.getElementById('settings-panel');
+  if (!btn || !panel) return;
+
+  // Toggle panel visibility
+  btn.addEventListener('click', () => {
+    panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+  });
+
+  // Mark the active option for each setting
+  const markActive = (setting: keyof AppSettings, value: string) => {
+    panel.querySelectorAll<HTMLButtonElement>(`[data-setting="${setting}"]`).forEach(el => {
+      el.classList.toggle('active', el.dataset.value === value);
+    });
+  };
+
+  markActive('theme', initialSettings.theme);
+  markActive('liveDataMode', initialSettings.liveDataMode);
+
+  // Handle clicks on any settings option button
+  panel.addEventListener('click', (e) => {
+    const target = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-setting]');
+    if (!target) return;
+
+    const setting = target.dataset.setting as keyof AppSettings;
+    const value = target.dataset.value as AppSettings[keyof AppSettings];
+    if (!setting || !value) return;
+
+    markActive(setting, value);
+    window.electronAPI?.setSetting(setting, value);
+
+    if (setting === 'theme') {
+      applyTheme(value as AppSettings['theme']);
+    } else if (setting === 'liveDataMode') {
+      dataDisplay.updateSettings({ ...initialSettings, liveDataMode: value as AppSettings['liveDataMode'] });
+      // Keep initialSettings in sync so subsequent toggles have the right base
+      (initialSettings as AppSettings).liveDataMode = value as AppSettings['liveDataMode'];
+    }
+  });
+}
+
 /**
  * Auto-reconnect handler called by main process via executeJavaScript with userGesture=true.
  * This allows requestDevice() to run without a real user gesture on macOS.
@@ -535,11 +585,21 @@ async function handleAutoReconnect(device: { name: string; id: string }): Promis
  * Sets up UI components, callbacks, and event listeners.
  */
 async function init(): Promise<void> {
+  // Load persisted settings before building UI
+  const settings: AppSettings = window.electronAPI
+    ? await window.electronAPI.getSettings()
+    : { theme: 'light', liveDataMode: 'device' };
+
+  applyTheme(settings.theme);
+
   // Initialize UI components
   activityLog = new ActivityLog('log');
-  dataDisplay = new DataDisplay();
+  dataDisplay = new DataDisplay(deviceSpecParser);
+  dataDisplay.updateSettings(settings);
   statusIndicator = new StatusIndicator();
   deviceList = new DeviceList();
+
+  setupSettingsPanel(settings);
 
   activityLog.log('Initializing FitBridge...');
 

@@ -3,3 +3,4 @@
  */
 export * from './fitness-data';
 export * from './bluetooth';
+export * from './settings';

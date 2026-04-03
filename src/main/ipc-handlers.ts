@@ -8,6 +8,8 @@ import { BluetoothBroadcaster, BroadcasterStatus } from './bluetooth-broadcaster
 import { FtmsOutput } from '../shared/types/fitness-data';
 import { startPowerSaveBlocker, stopPowerSaveBlocker } from './power-manager';
 import { saveLastDevice, loadLastDevice, clearLastDevice, PersistedDevice } from './device-persistence';
+import { getSettings, setSetting } from './settings-store';
+import { AppSettings } from '../shared/types/settings';
 
 export function setupIpcHandlers(
   deviceManager: BluetoothDeviceManager,
@@ -100,6 +102,15 @@ export function setupIpcHandlers(
 
   ipcMain.on('clear-last-device', () => {
     clearLastDevice();
+  });
+
+  // Settings handlers
+  ipcMain.handle('get-settings', (): AppSettings => {
+    return getSettings();
+  });
+
+  ipcMain.on('set-setting', (_event, key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => {
+    setSetting(key, value);
   });
 
   // Forward renderer log messages to the main process terminal

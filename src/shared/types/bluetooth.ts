@@ -3,6 +3,7 @@
  */
 
 import { FtmsOutput } from './fitness-data';
+import { AppSettings } from './settings';
 
 /**
  * Information about a discovered Bluetooth device (from main process scan)
@@ -82,6 +83,10 @@ export interface ElectronAPI {
   onAutoReconnectFailed: (callback: (info: { deviceName: string; reason: string }) => void) => void;
   onLookoutStatus: (callback: (status: { active: boolean; deviceName?: string }) => void) => void;
   removeDotnetListeners: () => void;
+
+  // Settings
+  getSettings: () => Promise<AppSettings>;
+  setSetting: (key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => void;
 
   // Logging
   logToMain: (message: string) => void;

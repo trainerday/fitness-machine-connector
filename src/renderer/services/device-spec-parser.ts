@@ -262,6 +262,53 @@ export class DeviceSpecParser {
   }
 
   /**
+   * Get the display name for a spec by its id.
+   * Returns the spec's human-readable name, or the id itself if not found.
+   */
+  getSpecName(specId: string): string {
+    const spec = deviceSpecs.find(s => s.id === specId);
+    return spec?.name ?? specId;
+  }
+
+  /**
+   * Get the ordered list of field names to display for a given spec.
+   * Derived directly from the spec — no hardcoding per device.
+   * Excludes private fields (name starts with _) and skip-only fields.
+   */
+  getDisplayFields(specId: string): string[] {
+    const spec = deviceSpecs.find(s => s.id === specId);
+    if (!spec) return ['power', 'cadence', 'heartRate'];
+
+    const names: string[] = [];
+    const seen = new Set<string>();
+
+    const addField = (name: string) => {
+      if (!name.startsWith('_') && !seen.has(name)) {
+        seen.add(name);
+        names.push(name);
+      }
+    };
+
+    // Static single-packet fields
+    for (const f of spec.fields ?? []) addField(f.name);
+
+    // Dynamic fields (FTMS-style flag-based), excluding skip-only fields
+    for (const f of spec.dynamicFields ?? []) {
+      if (!f.skip) addField(f.name);
+    }
+
+    // Multi-packet specs (e.g. Echelon D1/D2)
+    for (const p of spec.packets ?? []) {
+      for (const f of p.fields ?? []) addField(f.name);
+    }
+
+    // Computed fields last (they depend on the raw fields above)
+    for (const f of spec.computed ?? []) addField(f.name);
+
+    return names;
+  }
+
+  /**
    * Get all characteristic configs for subscription setup.
    */
   getCharacteristicConfigs(): Array<{ serviceUuid: BluetoothUuid; characteristicUuid: BluetoothUuid }> {

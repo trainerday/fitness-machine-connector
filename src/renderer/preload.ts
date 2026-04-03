@@ -3,6 +3,7 @@
 
 import { contextBridge, ipcRenderer } from 'electron';
 import { FtmsOutput } from '../shared/types/fitness-data';
+import { AppSettings } from '../shared/types/settings';
 
 // Broadcaster status type (matches main process)
 interface BroadcasterStatus {
@@ -157,6 +158,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('raw-data-from-dotnet');
     ipcRenderer.removeAllListeners('auto-reconnect-failed');
     ipcRenderer.removeAllListeners('lookout-status');
+  },
+
+  // Settings
+  getSettings: (): Promise<AppSettings> => {
+    return ipcRenderer.invoke('get-settings');
+  },
+
+  setSetting: (key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => {
+    ipcRenderer.send('set-setting', key, value);
   },
 
   // USB / ANT+ device controls

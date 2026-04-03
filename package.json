@@ -49,6 +49,7 @@
     "@stoprocent/bleno": "^0.12.1",
     "ant-plus": "^0.2.0",
     "electron-squirrel-startup": "^1.0.1",
+    "electron-store": "^8.2.0",
     "usb": "^2.17.0"
   }
 }
