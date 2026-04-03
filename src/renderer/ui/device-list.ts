@@ -35,9 +35,7 @@ export class DeviceList {
   private devices: Map<string, BluetoothDeviceInfo> = new Map();
   private trustedIds: Set<string> = new Set();
   private isScanning = false;
-  private showTrustedOnly = false;
-  private showFitnessOnly = false;
-  private showUsbOnly = false;
+  private activeFilter: 'trusted' | 'fitness' | 'usb' | null = null;
   private searchQuery = '';
 
   constructor() {
@@ -64,17 +62,17 @@ export class DeviceList {
     this.trustedToggle = document.createElement('button');
     this.trustedToggle.className = 'btn btn-small btn-secondary filter-toggle';
     this.trustedToggle.textContent = 'Trusted';
-    this.trustedToggle.addEventListener('click', () => this.toggleTrustedFilter());
+    this.trustedToggle.addEventListener('click', () => this.setFilter('trusted'));
 
     this.fitnessToggle = document.createElement('button');
     this.fitnessToggle.className = 'btn btn-small btn-secondary filter-toggle';
     this.fitnessToggle.textContent = 'Fitness';
-    this.fitnessToggle.addEventListener('click', () => this.toggleFitnessFilter());
+    this.fitnessToggle.addEventListener('click', () => this.setFilter('fitness'));
 
     this.usbToggle = document.createElement('button');
     this.usbToggle.className = 'btn btn-small btn-secondary filter-toggle';
     this.usbToggle.textContent = 'USB';
-    this.usbToggle.addEventListener('click', () => this.toggleUsbFilter());
+    this.usbToggle.addEventListener('click', () => this.setFilter('usb'));
 
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
@@ -145,10 +143,10 @@ export class DeviceList {
   }
 
   private isVisible(device: BluetoothDeviceInfo, isTrusted: boolean): boolean {
-    if (this.showTrustedOnly && !isTrusted) return false;
-    if (this.showFitnessOnly && !this.isFitnessDevice(device.deviceName)) return false;
+    if (this.activeFilter === 'trusted' && !isTrusted) return false;
+    if (this.activeFilter === 'fitness' && !this.isFitnessDevice(device.deviceName)) return false;
+    if (this.activeFilter === 'usb' && device.protocol !== 'ant-plus' && device.protocol !== 'direct-usb') return false;
     if (!this.matchesSearch(device.deviceName)) return false;
-    if (!this.matchesProtocol(device)) return false;
     return true;
   }
 
@@ -157,31 +155,16 @@ export class DeviceList {
     return deviceName.toLowerCase().includes(this.searchQuery);
   }
 
-  private matchesProtocol(device: BluetoothDeviceInfo): boolean {
-    if (!this.showUsbOnly) return true;
-    return device.protocol === 'ant-plus' || device.protocol === 'direct-usb';
-  }
-
   private isFitnessDevice(deviceName: string): boolean {
     if (!deviceName) return false;
     return FITNESS_DEVICE_PATTERNS.some(pattern => pattern.test(deviceName));
   }
 
-  private toggleTrustedFilter(): void {
-    this.showTrustedOnly = !this.showTrustedOnly;
-    this.trustedToggle.classList.toggle('active', this.showTrustedOnly);
-    this.refreshList();
-  }
-
-  private toggleFitnessFilter(): void {
-    this.showFitnessOnly = !this.showFitnessOnly;
-    this.fitnessToggle.classList.toggle('active', this.showFitnessOnly);
-    this.refreshList();
-  }
-
-  private toggleUsbFilter(): void {
-    this.showUsbOnly = !this.showUsbOnly;
-    this.usbToggle.classList.toggle('active', this.showUsbOnly);
+  private setFilter(filter: 'trusted' | 'fitness' | 'usb'): void {
+    this.activeFilter = this.activeFilter === filter ? null : filter;
+    this.trustedToggle.classList.toggle('active', this.activeFilter === 'trusted');
+    this.fitnessToggle.classList.toggle('active', this.activeFilter === 'fitness');
+    this.usbToggle.classList.toggle('active', this.activeFilter === 'usb');
     this.refreshList();
   }
 

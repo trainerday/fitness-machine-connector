@@ -613,6 +613,9 @@ async function init(): Promise<void> {
   statusIndicator.onDisconnectClick(handleDisconnect);
   deviceList.onSelect(handleDeviceSelection);
   deviceList.setTrustedDevices(settings.trustedDevices);
+  settings.trustedDevices.forEach(({ id, name }) => {
+    deviceList.addDevice({ deviceId: id, deviceName: name, protocol: 'ble' });
+  });
   deviceList.onTrust((id, name) => {
     window.electronAPI?.addTrustedDevice(id, name);
   });

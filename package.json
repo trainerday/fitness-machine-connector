@@ -45,8 +45,10 @@
     "typescript": "~4.5.4",
     "vite": "^5.4.21"
   },
+  "optionalDependencies": {
+    "@stoprocent/bleno": "^0.12.1"
+  },
   "dependencies": {
-    "@stoprocent/bleno": "^0.12.1",
     "ant-plus": "^0.2.0",
     "electron-squirrel-startup": "^1.0.1",
     "electron-store": "^8.2.0",
