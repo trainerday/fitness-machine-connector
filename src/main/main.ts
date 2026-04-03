@@ -184,7 +184,16 @@ app.on('ready', () => {
       ],
     },
     {
-      label: 'Help',
+      role: 'window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        { type: 'separator' },
+        { role: 'front' },
+      ],
+    },
+    {
+      role: 'help',
       submenu: [
         {
           label: 'Contact Support',
