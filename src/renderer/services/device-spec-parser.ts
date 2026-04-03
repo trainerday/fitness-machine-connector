@@ -302,8 +302,8 @@ export class DeviceSpecParser {
       for (const f of p.fields ?? []) addField(f.name);
     }
 
-    // Computed fields last (they depend on the raw fields above)
-    for (const f of spec.computed ?? []) addField(f.name);
+    // NOTE: computed fields are intentionally excluded — they are synthetic values
+    // calculated by the app, not data the device actually broadcasts.
 
     return names;
   }
