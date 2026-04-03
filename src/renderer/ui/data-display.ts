@@ -58,6 +58,7 @@ function buildFieldConfigs(fieldNames: string[]): FieldConfig[] {
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
   liveDataMode: 'device',
+  trustedDevices: [],
 };
 
 export class DataDisplay {

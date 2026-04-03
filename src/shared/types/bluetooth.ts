@@ -86,7 +86,8 @@ export interface ElectronAPI {
 
   // Settings
   getSettings: () => Promise<AppSettings>;
-  setSetting: (key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => void;
+  setSetting: (key: 'theme' | 'liveDataMode', value: string) => void;
+  addTrustedDevice: (id: string, name: string) => void;
 
   // Logging
   logToMain: (message: string) => void;

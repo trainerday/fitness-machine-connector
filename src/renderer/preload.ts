@@ -165,8 +165,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return ipcRenderer.invoke('get-settings');
   },
 
-  setSetting: (key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => {
+  setSetting: (key: 'theme' | 'liveDataMode', value: string) => {
     ipcRenderer.send('set-setting', key, value);
+  },
+
+  addTrustedDevice: (id: string, name: string) => {
+    ipcRenderer.send('add-trusted-device', id, name);
   },
 
   // USB / ANT+ device controls

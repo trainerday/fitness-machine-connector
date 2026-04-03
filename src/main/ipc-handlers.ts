@@ -8,7 +8,7 @@ import { BluetoothBroadcaster, BroadcasterStatus } from './bluetooth-broadcaster
 import { FtmsOutput } from '../shared/types/fitness-data';
 import { startPowerSaveBlocker, stopPowerSaveBlocker } from './power-manager';
 import { saveLastDevice, loadLastDevice, clearLastDevice, PersistedDevice } from './device-persistence';
-import { getSettings, setSetting } from './settings-store';
+import { getSettings, setSetting, addTrustedDevice } from './settings-store';
 import { AppSettings } from '../shared/types/settings';
 
 export function setupIpcHandlers(
@@ -111,6 +111,10 @@ export function setupIpcHandlers(
 
   ipcMain.on('set-setting', (_event, key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => {
     setSetting(key, value);
+  });
+
+  ipcMain.on('add-trusted-device', (_event, id: string, name: string) => {
+    addTrustedDevice(id, name);
   });
 
   // Forward renderer log messages to the main process terminal

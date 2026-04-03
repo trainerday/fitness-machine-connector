@@ -1,28 +1,23 @@
 /**
- * Device list UI component - displays discovered Bluetooth devices
- * Supports real-time streaming of devices as they're discovered
+ * Device list UI component - displays discovered Bluetooth devices.
+ * Trusted devices (previously connected) always sort to the top with a ★ badge,
+ * and can be filtered to exclusively with the Trusted toggle.
  */
 
-import { BluetoothDeviceInfo } from '../../shared/types';
+import { BluetoothDeviceInfo, TrustedDevice } from '../../shared/types';
 
-// Known fitness device name patterns for filtering
+// Name patterns used only for the FITNESS badge — not for filtering
 const FITNESS_DEVICE_PATTERNS = [
-  // Major fitness equipment brands
   /wahoo/i, /kickr/i, /garmin/i, /zwift/i, /tacx/i, /elite/i, /saris/i,
   /keiser/i, /wattbike/i, /stages/i, /assioma/i, /favero/i, /quarq/i,
   /power2max/i, /srm/i, /4iiii/i, /magene/i, /xoss/i, /coospo/i,
   /polar/i, /suunto/i, /coros/i, /moofit/i, /icg/i, /lifefitness/i,
-  // Heart rate keywords
   /hr/i, /hrm/i, /heart/i, /pulse/i,
-  // Cycling/fitness keywords
   /bike/i, /trainer/i, /cycling/i, /cadence/i, /speed/i, /power/i,
   /fitness/i, /spin/i, /indoor/i,
-  // BLE fitness service indicators
   /ftms/i, /csc/i, /cps/i,
-  // Home fitness brands
   /peloton/i, /echelon/i, /bowflex/i, /schwinn/i, /nordictrack/i,
   /concept2/i, /pm5/i, /ergometer/i, /rower/i,
-  // App-specific
   /trainerday/i, /td\s/i,
 ];
 
@@ -32,11 +27,15 @@ export class DeviceList {
   private header: HTMLElement;
   private countBadge: HTMLSpanElement;
   private scanningIndicator: HTMLSpanElement;
-  private filterToggle: HTMLButtonElement;
+  private trustedToggle: HTMLButtonElement;
+  private fitnessToggle: HTMLButtonElement;
   private usbToggle: HTMLButtonElement;
   private onDeviceSelect: ((deviceId: string, deviceName: string, protocol?: string) => void) | null = null;
+  private onTrustDevice: ((id: string, name: string) => void) | null = null;
   private devices: Map<string, BluetoothDeviceInfo> = new Map();
+  private trustedIds: Set<string> = new Set();
   private isScanning = false;
+  private showTrustedOnly = false;
   private showFitnessOnly = false;
   private showUsbOnly = false;
   private searchQuery = '';
@@ -54,29 +53,29 @@ export class DeviceList {
     this.list = list as HTMLDivElement;
     this.header = header;
 
-    // Create count badge
     this.countBadge = document.createElement('span');
     this.countBadge.className = 'device-count-badge';
     this.countBadge.textContent = '0';
 
-    // Create scanning indicator
     this.scanningIndicator = document.createElement('span');
     this.scanningIndicator.className = 'scanning-indicator';
     this.scanningIndicator.textContent = 'Scanning...';
 
-    // Create filter toggle button
-    this.filterToggle = document.createElement('button');
-    this.filterToggle.className = 'btn btn-small btn-secondary filter-toggle';
-    this.filterToggle.textContent = 'Fitness Only';
-    this.filterToggle.addEventListener('click', () => this.toggleFitnessFilter());
+    this.trustedToggle = document.createElement('button');
+    this.trustedToggle.className = 'btn btn-small btn-secondary filter-toggle';
+    this.trustedToggle.textContent = 'Trusted';
+    this.trustedToggle.addEventListener('click', () => this.toggleTrustedFilter());
 
-    // Create USB toggle button
+    this.fitnessToggle = document.createElement('button');
+    this.fitnessToggle.className = 'btn btn-small btn-secondary filter-toggle';
+    this.fitnessToggle.textContent = 'Fitness';
+    this.fitnessToggle.addEventListener('click', () => this.toggleFitnessFilter());
+
     this.usbToggle = document.createElement('button');
     this.usbToggle.className = 'btn btn-small btn-secondary filter-toggle';
     this.usbToggle.textContent = 'USB';
     this.usbToggle.addEventListener('click', () => this.toggleUsbFilter());
 
-    // Create search input
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
     searchInput.className = 'device-search';
@@ -86,101 +85,53 @@ export class DeviceList {
       this.refreshList();
     });
 
-    // Add elements to header
     this.header.appendChild(this.countBadge);
     this.header.appendChild(this.scanningIndicator);
-    this.header.appendChild(this.filterToggle);
+    this.header.appendChild(this.trustedToggle);
+    this.header.appendChild(this.fitnessToggle);
     this.header.appendChild(this.usbToggle);
     this.header.appendChild(searchInput);
   }
 
-  /**
-   * Set callback for when user selects a device.
-   * Protocol is passed through so the caller can route BLE vs USB correctly.
-   */
   onSelect(handler: (deviceId: string, deviceName: string, protocol?: string) => void): void {
     this.onDeviceSelect = handler;
   }
 
-  /**
-   * Check if a device name matches fitness device patterns
-   */
-  private isFitnessDevice(deviceName: string): boolean {
-    if (!deviceName) return false;
-    return FITNESS_DEVICE_PATTERNS.some(pattern => pattern.test(deviceName));
+  onTrust(handler: (id: string, name: string) => void): void {
+    this.onTrustDevice = handler;
   }
 
-  private matchesSearch(deviceName: string): boolean {
-    if (!this.searchQuery) return true;
-    return deviceName.toLowerCase().includes(this.searchQuery);
+  setTrustedDevices(trusted: TrustedDevice[]): void {
+    this.trustedIds = new Set(trusted.map(d => d.id));
   }
 
-  /**
-   * Add a single device to the list (for streaming updates)
-   */
   addDevice(device: BluetoothDeviceInfo): void {
-    // Skip if we already have this device
-    if (this.devices.has(device.deviceId)) {
-      return;
-    }
+    if (this.devices.has(device.deviceId)) return;
 
     this.devices.set(device.deviceId, device);
     this.updateCountBadge();
 
-    // Check if device should be visible based on current filters
-    const isFitness = this.isFitnessDevice(device.deviceName);
-    const shouldShow = (!this.showFitnessOnly || isFitness) && this.matchesSearch(device.deviceName) && this.matchesProtocol(device);
+    const isTrusted = this.trustedIds.has(device.deviceId);
+    const visible = this.isVisible(device, isTrusted);
 
-    if (shouldShow) {
-      // Remove "no devices" message before adding first visible device
+    if (visible) {
       const noDevicesMsg = this.list.querySelector('.no-devices');
-      if (noDevicesMsg) {
-        noDevicesMsg.remove();
-      }
+      if (noDevicesMsg) noDevicesMsg.remove();
 
-      const item = this.createDeviceItem(device, isFitness);
-      this.list.appendChild(item);
+      const item = this.createDeviceItem(device, isTrusted);
+
+      // Trusted devices always go above non-trusted ones
+      if (isTrusted) {
+        const firstNonTrusted = this.list.querySelector('.device-item:not(.device-item--trusted)');
+        this.list.insertBefore(item, firstNonTrusted ?? null);
+      } else {
+        this.list.appendChild(item);
+      }
     }
 
-    // Show the section
     this.section.style.display = 'block';
   }
 
-  /**
-   * Update the device count badge to show visible/total counts
-   */
-  private updateCountBadge(): void {
-    const total = this.devices.size;
-    const visible = Array.from(this.devices.values()).filter(d =>
-      (!this.showFitnessOnly || this.isFitnessDevice(d.deviceName)) &&
-      this.matchesSearch(d.deviceName) &&
-      this.matchesProtocol(d)
-    ).length;
-
-    this.countBadge.textContent = visible === total ? `${total}` : `${visible}/${total}`;
-  }
-
-  /**
-   * Toggle fitness-only filter
-   */
-  private toggleFitnessFilter(): void {
-    this.showFitnessOnly = !this.showFitnessOnly;
-    this.filterToggle.classList.toggle('active', this.showFitnessOnly);
-    this.refreshList();
-  }
-
-  /**
-   * Toggle USB-only filter (hides all BLE devices)
-   */
-  private toggleUsbFilter(): void {
-    this.showUsbOnly = !this.showUsbOnly;
-    this.usbToggle.classList.toggle('active', this.showUsbOnly);
-    this.refreshList();
-  }
-
-  /**
-   * Remove a single device from the list (e.g. USB stick unplugged).
-   */
   removeDevice(deviceId: string): void {
     this.devices.delete(deviceId);
     this.updateCountBadge();
@@ -193,50 +144,83 @@ export class DeviceList {
     }
   }
 
+  private isVisible(device: BluetoothDeviceInfo, isTrusted: boolean): boolean {
+    if (this.showTrustedOnly && !isTrusted) return false;
+    if (this.showFitnessOnly && !this.isFitnessDevice(device.deviceName)) return false;
+    if (!this.matchesSearch(device.deviceName)) return false;
+    if (!this.matchesProtocol(device)) return false;
+    return true;
+  }
+
+  private matchesSearch(deviceName: string): boolean {
+    if (!this.searchQuery) return true;
+    return deviceName.toLowerCase().includes(this.searchQuery);
+  }
+
   private matchesProtocol(device: BluetoothDeviceInfo): boolean {
     if (!this.showUsbOnly) return true;
     return device.protocol === 'ant-plus' || device.protocol === 'direct-usb';
   }
 
-  /**
-   * Refresh the displayed list based on current filter
-   */
+  private isFitnessDevice(deviceName: string): boolean {
+    if (!deviceName) return false;
+    return FITNESS_DEVICE_PATTERNS.some(pattern => pattern.test(deviceName));
+  }
+
+  private toggleTrustedFilter(): void {
+    this.showTrustedOnly = !this.showTrustedOnly;
+    this.trustedToggle.classList.toggle('active', this.showTrustedOnly);
+    this.refreshList();
+  }
+
+  private toggleFitnessFilter(): void {
+    this.showFitnessOnly = !this.showFitnessOnly;
+    this.fitnessToggle.classList.toggle('active', this.showFitnessOnly);
+    this.refreshList();
+  }
+
+  private toggleUsbFilter(): void {
+    this.showUsbOnly = !this.showUsbOnly;
+    this.usbToggle.classList.toggle('active', this.showUsbOnly);
+    this.refreshList();
+  }
+
+  private updateCountBadge(): void {
+    const total = this.devices.size;
+    const visible = Array.from(this.devices.values()).filter(d =>
+      this.isVisible(d, this.trustedIds.has(d.deviceId))
+    ).length;
+    this.countBadge.textContent = visible === total ? `${total}` : `${visible}/${total}`;
+  }
+
   private refreshList(): void {
     this.list.innerHTML = '';
 
-    const devicesToShow = Array.from(this.devices.values())
-      .filter(device =>
-        (!this.showFitnessOnly || this.isFitnessDevice(device.deviceName)) &&
-        this.matchesSearch(device.deviceName) &&
-        this.matchesProtocol(device)
-      );
+    const allDevices = Array.from(this.devices.values());
+    const trusted = allDevices.filter(d => this.trustedIds.has(d.deviceId) && this.isVisible(d, true));
+    const others  = allDevices.filter(d => !this.trustedIds.has(d.deviceId) && this.isVisible(d, false));
+
+    const devicesToShow = [...trusted, ...others];
 
     if (devicesToShow.length === 0 && this.devices.size > 0) {
       this.list.innerHTML = `<div class="no-devices">No devices match the current filters (${this.devices.size} found).</div>`;
     } else if (devicesToShow.length === 0) {
       this.list.innerHTML = '<div class="no-devices">Searching for devices...</div>';
     } else {
-      devicesToShow.forEach((device) => {
-        const isFitness = this.isFitnessDevice(device.deviceName);
-        const item = this.createDeviceItem(device, isFitness);
-        this.list.appendChild(item);
+      devicesToShow.forEach(device => {
+        const isTrusted = this.trustedIds.has(device.deviceId);
+        this.list.appendChild(this.createDeviceItem(device, isTrusted));
       });
     }
 
     this.updateCountBadge();
   }
 
-  /**
-   * Set scanning state (shows/hides scanning indicator)
-   */
   setScanning(scanning: boolean): void {
     this.isScanning = scanning;
     this.scanningIndicator.style.display = scanning ? 'inline-flex' : 'none';
   }
 
-  /**
-   * Clear all devices and prepare for new scan
-   */
   clear(): void {
     this.devices.clear();
     this.list.innerHTML = '<div class="no-devices">Searching for devices...</div>';
@@ -244,12 +228,9 @@ export class DeviceList {
     this.section.style.display = 'block';
   }
 
-  /**
-   * Create a device list item element
-   */
-  private createDeviceItem(device: BluetoothDeviceInfo, isFitness: boolean): HTMLDivElement {
+  private createDeviceItem(device: BluetoothDeviceInfo, isTrusted: boolean): HTMLDivElement {
     const item = document.createElement('div');
-    item.className = 'device-item';
+    item.className = `device-item${isTrusted ? ' device-item--trusted' : ''}`;
     item.dataset.deviceId = device.deviceId;
 
     const info = document.createElement('div');
@@ -261,10 +242,9 @@ export class DeviceList {
     const name = document.createElement('span');
     name.className = 'device-name';
     name.textContent = device.deviceName || 'Unknown Device';
-
     nameRow.appendChild(name);
 
-    if (isFitness) {
+    if (this.isFitnessDevice(device.deviceName)) {
       const badge = document.createElement('span');
       badge.className = 'fitness-badge';
       badge.textContent = 'FITNESS';
@@ -290,24 +270,37 @@ export class DeviceList {
     info.appendChild(nameRow);
     info.appendChild(id);
 
+    const right = document.createElement('div');
+    right.className = 'device-item-right';
+
+    if (isTrusted) {
+      const star = document.createElement('span');
+      star.className = 'trusted-star';
+      star.textContent = '★';
+      star.title = 'Trusted device';
+      right.appendChild(star);
+    }
+
     const connectBtn = document.createElement('button');
     connectBtn.className = 'btn btn-small btn-primary';
     connectBtn.textContent = 'Connect';
     connectBtn.addEventListener('click', () => {
-      if (this.onDeviceSelect) {
-        this.onDeviceSelect(device.deviceId, device.deviceName, device.protocol);
+      // Mark as trusted on first connect
+      if (!this.trustedIds.has(device.deviceId)) {
+        this.trustedIds.add(device.deviceId);
+        this.onTrustDevice?.(device.deviceId, device.deviceName);
       }
+      this.onDeviceSelect?.(device.deviceId, device.deviceName, device.protocol);
     });
 
+    right.appendChild(connectBtn);
+
     item.appendChild(info);
-    item.appendChild(connectBtn);
+    item.appendChild(right);
 
     return item;
   }
 
-  /**
-   * Hide the device list
-   */
   hide(): void {
     this.section.style.display = 'none';
     this.devices.clear();
@@ -315,9 +308,6 @@ export class DeviceList {
     this.setScanning(false);
   }
 
-  /**
-   * Show the device list section
-   */
   show(): void {
     this.section.style.display = 'block';
   }

@@ -85,7 +85,6 @@ export class FitnessDataReader {
    * Returns the selected device or null if user cancelled.
    */
   async scanForDevices(): Promise<BluetoothDevice | null> {
-    // Pass fitness service UUIDs from device specs to BluetoothService
     const serviceUuids = deviceSpecParser.getServiceUuids();
     return bluetoothService.scanForDevices(serviceUuids);
   }

@@ -540,8 +540,8 @@ function setupSettingsPanel(initialSettings: AppSettings): void {
     const target = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-setting]');
     if (!target) return;
 
-    const setting = target.dataset.setting as keyof AppSettings;
-    const value = target.dataset.value as AppSettings[keyof AppSettings];
+    const setting = target.dataset.setting as 'theme' | 'liveDataMode';
+    const value = target.dataset.value;
     if (!setting || !value) return;
 
     markActive(setting, value);
@@ -588,7 +588,7 @@ async function init(): Promise<void> {
   // Load persisted settings before building UI
   const settings: AppSettings = window.electronAPI
     ? await window.electronAPI.getSettings()
-    : { theme: 'light', liveDataMode: 'device' };
+    : { theme: 'light', liveDataMode: 'device', trustedDevices: [] };
 
   applyTheme(settings.theme);
 
@@ -612,6 +612,10 @@ async function init(): Promise<void> {
   statusIndicator.onScanClick(() => handleScan(true));
   statusIndicator.onDisconnectClick(handleDisconnect);
   deviceList.onSelect(handleDeviceSelection);
+  deviceList.setTrustedDevices(settings.trustedDevices);
+  deviceList.onTrust((id, name) => {
+    window.electronAPI?.addTrustedDevice(id, name);
+  });
 
   // Set up fitness reader callbacks
   setupFitnessReaderCallbacks();

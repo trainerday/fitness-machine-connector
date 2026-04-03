@@ -469,6 +469,22 @@ section {
   padding: 20px;
 }
 
+.device-item--trusted {
+  border-left: 2px solid var(--accent);
+}
+
+.device-item-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.trusted-star {
+  color: var(--accent);
+  font-size: 18px;
+  line-height: 1;
+}
+
 .fitness-badge {
   background: var(--accent-bg);
   color: var(--accent);
