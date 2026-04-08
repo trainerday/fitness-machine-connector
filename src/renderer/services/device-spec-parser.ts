@@ -133,15 +133,21 @@ function normalizeUuid(uuid: BluetoothUuid): string {
     // Handle "0x1234" format - strip prefix
     hex = uuid.slice(2).toLowerCase();
   } else {
-    // 128-bit UUID string - return as-is (lowercase)
-    return uuid.toLowerCase();
+    // 128-bit UUID string
+    const lower = uuid.toLowerCase();
+    // BLE standard UUIDs use the base pattern 0000XXXX-0000-1000-8000-00805f9b34fb.
+    // The .NET backend emits the full 128-bit form (e.g. "00000002-0000-1000-8000-00805f9b34fb")
+    // but specs use the short form (e.g. "0x0002"). Normalize them to the same short key.
+    const bleBase = lower.match(/^0000([0-9a-f]{4})-0000-1000-8000-00805f9b34fb$/);
+    if (bleBase) {
+      hex = bleBase[1];
+    } else {
+      return lower;
+    }
   }
 
-  // For 16-bit UUIDs, strip leading zeros for consistent matching
-  // "0002" -> "2", "002a" -> "2a"
-  hex = hex.replace(/^0+/, '') || '0';
-
-  return hex;
+  // Strip leading zeros for consistent matching: "0002" -> "2", "002a" -> "2a"
+  return hex.replace(/^0+/, '') || '0';
 }
 
 // Initialize lookup map

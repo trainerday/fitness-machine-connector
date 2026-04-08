@@ -89,6 +89,9 @@ export interface ElectronAPI {
   setSetting: (key: 'theme' | 'liveDataMode', value: string) => void;
   addTrustedDevice: (id: string, name: string) => void;
 
+  // Source device disconnect notification (triggers lookout restart in main)
+  notifySourceDeviceDisconnected: () => void;
+
   // Logging
   logToMain: (message: string) => void;
 }

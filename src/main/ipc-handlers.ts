@@ -13,7 +13,8 @@ import { AppSettings } from '../shared/types/settings';
 
 export function setupIpcHandlers(
   deviceManager: BluetoothDeviceManager,
-  broadcaster: BluetoothBroadcaster
+  broadcaster: BluetoothBroadcaster,
+  onSourceDeviceDisconnected?: () => void
 ): void {
   // Handle device selection from renderer
   ipcMain.on('select-bluetooth-device', (_event, deviceId: string) => {
@@ -76,7 +77,12 @@ export function setupIpcHandlers(
     });
   });
 
+  let rawDataEventCount = 0;
   broadcaster.on('rawData', (data: { characteristicUuid: string; bytes: number[] }) => {
+    if (rawDataEventCount < 5) {
+      rawDataEventCount++;
+      console.log(`[IPC] rawData #${rawDataEventCount}: uuid=${data.characteristicUuid} len=${data.bytes.length} first4=[${data.bytes.slice(0, 4).join(',')}]`);
+    }
     const windows = BrowserWindow.getAllWindows();
     windows.forEach((win) => {
       win.webContents.send('raw-data-from-dotnet', data);
@@ -115,6 +121,12 @@ export function setupIpcHandlers(
 
   ipcMain.on('add-trusted-device', (_event, id: string, name: string) => {
     addTrustedDevice(id, name);
+  });
+
+  // Source device disconnected unexpectedly (Web Bluetooth path) - restart lookout
+  ipcMain.on('source-device-disconnected', () => {
+    console.log('[IPC] source-device-disconnected received');
+    onSourceDeviceDisconnected?.();
   });
 
   // Forward renderer log messages to the main process terminal

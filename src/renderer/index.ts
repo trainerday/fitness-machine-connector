@@ -55,6 +55,9 @@ let deviceIdentified = false;
 /** Interval handle for the 1-second update loop (display + broadcast) */
 let updateInterval: ReturnType<typeof setInterval> | null = null;
 
+/** Set to true just before user-initiated disconnect so onConnectionChange can distinguish */
+let userInitiatedDisconnect = false;
+
 // =============================================================================
 // UI COMPONENTS
 // =============================================================================
@@ -234,8 +237,12 @@ async function handleDisconnect(): Promise<void> {
   // Stop the update interval (stops data display updates)
   stopUpdateInterval();
 
+  // Mark as user-initiated so onConnectionChange doesn't trigger lookout restart
+  userInitiatedDisconnect = true;
+
   // Disconnect Web Bluetooth connection (if any)
   await fitnessReader.disconnect();
+  userInitiatedDisconnect = false;
 
   activityLog.log('Disconnected');
   statusIndicator.setDisconnected();
@@ -307,6 +314,10 @@ function setupFitnessReaderCallbacks(): void {
       // Auto-stop FTMS broadcast when device disconnects
       if (window.electronAPI) {
         window.electronAPI.broadcasterStop();
+        // If this was NOT a user-initiated disconnect, tell main to restart lookout
+        if (!userInitiatedDisconnect) {
+          window.electronAPI.notifySourceDeviceDisconnected();
+        }
       }
     }
   });
@@ -423,7 +434,16 @@ function setupIpcListeners(): void {
   });
 
   // Listen for raw characteristic bytes from .NET backend — parse via DeviceSpecParser
+  let rawDataLogCount = 0;
   window.electronAPI.onRawDataFromDotnet((data) => {
+    // Log first few rawData events so we can diagnose UUID/parsing issues
+    if (rawDataLogCount < 3) {
+      rawDataLogCount++;
+      const msg = `[rawData] uuid=${data.characteristicUuid} bytes=${data.bytes.length} [${data.bytes.slice(0, 4).join(',')}...]`;
+      console.log(msg);
+      window.electronAPI?.logToMain(msg);
+    }
+
     const buffer = new Uint8Array(data.bytes).buffer;
     const dataView = new DataView(buffer);
     const fitnessData = deviceSpecParser.parse(data.characteristicUuid, dataView);
@@ -435,6 +455,10 @@ function setupIpcListeners(): void {
         window.electronAPI?.logToMain(msg);
       }
       latestFitnessData = { ...latestFitnessData, ...fitnessData };
+    } else if (rawDataLogCount <= 3) {
+      const msg = `[rawData] no spec matched for uuid=${data.characteristicUuid}`;
+      console.log(msg);
+      window.electronAPI?.logToMain(msg);
     }
   });
 

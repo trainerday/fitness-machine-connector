@@ -216,7 +216,7 @@ app.on('ready', () => {
   deviceManager = new BluetoothDeviceManager();
   broadcaster = new BluetoothBroadcaster();
   usbDeviceManager = new UsbDeviceManager();
-  setupIpcHandlers(deviceManager, broadcaster);
+  setupIpcHandlers(deviceManager, broadcaster, onDeviceDisconnected);
   setupUsbDeviceManager();
 
   setupBluetoothPermissions();
@@ -363,13 +363,10 @@ function startLookoutMode(): void {
     broadcaster.start();
   }
 
-  // Windows: use .NET backend scan to find and connect to the device
-  // Mac: use renderer's getDevices() path (no user gesture required)
-  if (process.platform !== 'darwin' && broadcaster) {
-    broadcaster.on('deviceFound', onLookoutDeviceFound);
-    broadcaster.on('deviceConnected', onLookoutDeviceConnected);
-    broadcaster.setAutoReconnect(true, savedDevice.id, savedDevice.name);
-  }
+  // Both macOS and Windows use executeJavaScript to trigger Web Bluetooth auto-reconnect.
+  // The .NET backend stays running only for FTMS broadcasting — source device data
+  // always flows through the Web Bluetooth path (characteristicvaluechanged events)
+  // because the WinRT BLE stack doesn't reliably fire ValueChanged notifications.
 
   // Notify renderer that lookout is active
   mainWindow?.webContents.send('lookout-status', {
@@ -394,64 +391,27 @@ function startLookoutMode(): void {
 function doLookoutScan(): void {
   if (!lookoutActive || isConnected) return;
 
-  if (process.platform === 'darwin') {
-    // Mac: Web Bluetooth requestDevice() requires a "user gesture".
-    // executeJavaScript with userGesture=true bypasses this restriction,
-    // letting the renderer call requestDevice() silently in the background.
-    const savedDevice = loadLastDevice();
-    if (savedDevice && mainWindow) {
-      console.log(`[Lookout] Attempting reconnect to ${savedDevice.name}`);
+  // All platforms: use executeJavaScript with userGesture=true to trigger Web Bluetooth.
+  // This bypasses the "user gesture required" restriction for requestDevice() and uses
+  // Chromium's BLE stack, which reliably delivers characteristicvaluechanged notifications.
+  const savedDevice = loadLastDevice();
+  if (savedDevice && mainWindow) {
+    console.log(`[Lookout] Attempting reconnect to ${savedDevice.name}`);
 
-      // Tell device manager to auto-select this device the moment it appears —
-      // this works even if the device is already cached (checked before dedup).
-      deviceManager?.setAutoReconnect(savedDevice.name, () => {
-        console.log(`[Lookout] Mac: device ${savedDevice.name} was auto-selected`);
-      });
+    // Tell device manager to auto-select this device the moment it appears.
+    deviceManager?.setAutoReconnect(savedDevice.name, () => {
+      console.log(`[Lookout] Device ${savedDevice.name} was auto-selected`);
+    });
 
-      // Clear the device cache so the device re-appears as "new" and triggers
-      // onDeviceFound → renderer's onBluetoothDeviceFound auto-select logic.
-      deviceManager?.startNewScan();
+    // Clear device cache so the device re-appears as "new" on next scan.
+    deviceManager?.startNewScan();
 
-      // Start requestDevice() with userGesture=true
-      const payload = JSON.stringify(savedDevice);
-      mainWindow.webContents.executeJavaScript(
-        `window.__autoReconnect && window.__autoReconnect(${payload})`,
-        true // userGesture = true — allows requestDevice() inside
-      ).catch(() => {});
-    }
-    return;
+    const payload = JSON.stringify(savedDevice);
+    mainWindow.webContents.executeJavaScript(
+      `window.__autoReconnect && window.__autoReconnect(${payload})`,
+      true // userGesture = true — allows requestDevice() inside
+    ).catch(() => {});
   }
-
-  console.log(`[Lookout] Scanning for ${lookoutDeviceName}...`);
-  broadcaster?.scan(LOOKOUT_SCAN_DURATION);
-}
-
-/**
- * Handle device found during lookout
- */
-function onLookoutDeviceFound(device: { id: string; name: string; isFitnessDevice?: boolean }): void {
-  if (!lookoutActive || !lookoutDeviceName) return;
-
-  console.log(`[Lookout] Found device: "${device.name}" (id: ${device.id}) — looking for: "${lookoutDeviceName}"`);
-
-  // Check if this is our target device
-  if (device.name.toLowerCase() === lookoutDeviceName) {
-    console.log(`[Lookout] Target device found! Connecting to ${device.name}...`);
-    broadcaster?.stopScan();
-    broadcaster?.connect(device.id, device.name);
-  }
-}
-
-/**
- * Handle successful connection during lookout
- */
-function onLookoutDeviceConnected(device: { id: string; name: string }): void {
-  console.log(`[Lookout] Connected to: ${device.name}`);
-  isConnected = true;
-  stopLookoutMode();
-
-  // Notify renderer that device is connected
-  mainWindow?.webContents.send('device-connected-via-dotnet', device);
 }
 
 /**
@@ -470,8 +430,6 @@ function stopLookoutMode(): void {
     lookoutInterval = null;
   }
 
-  broadcaster?.removeListener('deviceFound', onLookoutDeviceFound);
-  broadcaster?.removeListener('deviceConnected', onLookoutDeviceConnected);
   broadcaster?.stopScan();
 
   // Notify renderer

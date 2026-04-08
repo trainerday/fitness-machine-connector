@@ -147,6 +147,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     });
   },
 
+  // Notify main that source device disconnected unexpectedly (triggers lookout restart)
+  notifySourceDeviceDisconnected: () => {
+    ipcRenderer.send('source-device-disconnected');
+  },
+
   // Forward a log message to the main process terminal
   logToMain: (message: string) => {
     ipcRenderer.send('log-to-main', message);
