@@ -61,14 +61,21 @@ app.commandLine.appendSwitch('enable-experimental-web-platform-features');
 app.commandLine.appendSwitch('enable-web-bluetooth-new-permissions-backend');
 
 /**
+ * Resolve the path to an asset file.
+ * In dev: src/assets/<filename> (relative to project root)
+ * In prod: <filename> copied to the app's resources folder via extraResource
+ */
+function getAssetPath(filename: string): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, filename)
+    : path.join(app.getAppPath(), 'src/assets', filename);
+}
+
+/**
  * Load the tray icon from disk.
- * In dev: src/assets/tray-icon.png (relative to project root)
- * In prod: tray-icon.png copied to the app's resources folder via extraResource
  */
 function createTrayIcon(): Electron.NativeImage {
-  const iconPath = app.isPackaged
-    ? path.join(process.resourcesPath, 'tray-icon.png')
-    : path.join(app.getAppPath(), 'src/assets/tray-icon.png');
+  const iconPath = getAssetPath('fitbridge-logo.png');
 
   const icon = nativeImage.createFromPath(iconPath);
 
@@ -125,6 +132,7 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 900,
     height: 900,
+    icon: getAssetPath('fitbridge-logo.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
