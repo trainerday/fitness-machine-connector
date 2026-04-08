@@ -18,6 +18,7 @@ const config: ForgeConfig = {
       unpack: '**/node_modules/{@stoprocent,usb,ant-plus}/**',
     },
     executableName: process.platform === 'linux' ? 'fitbridge' : 'FitBridge',
+    icon: './src/assets/fitbridge',
     extraResource: [
       // C# FTMS broadcaster executable (built with: npm run ftms:build)
       // Will be available at process.resourcesPath at runtime

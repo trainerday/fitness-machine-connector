@@ -77,10 +77,12 @@ function getAssetPath(filename: string): string {
 function createTrayIcon(): Electron.NativeImage {
   const iconPath = getAssetPath('fitbridge-logo.png');
 
-  const icon = nativeImage.createFromPath(iconPath);
+  let icon = nativeImage.createFromPath(iconPath);
 
-  // Mark as template image on macOS so it adapts to light/dark mode
+  // macOS tray icons must be ~16x16 (or 18x18); resize and mark as template
+  // so the OS automatically adapts it to light/dark mode.
   if (process.platform === 'darwin') {
+    icon = icon.resize({ width: 16, height: 16 });
     icon.setTemplateImage(true);
   }
 
